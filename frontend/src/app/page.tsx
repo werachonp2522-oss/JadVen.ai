@@ -2103,6 +2103,11 @@ function UserManagementView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate password length for new user
+    if (!editUser && formData.password.length < 8) {
+      alert('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+      return;
+    }
     setSaving(true);
     try {
       if (editUser) {
@@ -2127,6 +2132,9 @@ function UserManagementView() {
     await fetchData();
     setSaving(false);
     setModalOpen(false);
+    // Reset form to blank state after saving
+    setFormData({ username: '', password: '', full_name: '', role: 'nurse', ward: wards.length > 0 ? wards[0].ward_name : 'แผนก ER (ฉุกเฉิน)' });
+    setEditUser(null);
   };
 
   const toggleActive = async (u: any) => {
@@ -2213,15 +2221,15 @@ function UserManagementView() {
         {modalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl">
+            <motion.div key={editUser?.id ?? 'new'} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl">
               <div className="px-6 py-4 border-b border-slate-700/50">
                 <h3 className="text-lg font-bold text-white">{editUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}</h3>
               </div>
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} autoComplete="off" className="p-6 space-y-4">
                 {!editUser && (
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Username</label>
-                    <input required value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} placeholder="เช่น nurse02" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                    <input required autoComplete="username" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} placeholder="เช่น nurse02" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
                   </div>
                 )}
                 <div>
@@ -2230,7 +2238,7 @@ function UserManagementView() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">{editUser ? 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน'}</label>
-                  <input type="password" required={!editUser} value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  <input type="password" autoComplete="new-password" required={!editUser} value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder={editUser ? '(เว้นว่างถ้าไม่ต้องการเปลี่ยน)' : 'กรอกรหัสผ่านอย่างน้อย 8 ตัว'} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Role</label>
