@@ -15,13 +15,13 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    logging.warning("⚠️ SECRET_KEY is not set in environment! Using a stable default key.")
-    SECRET_KEY = "jadven_default_stable_secret_key_for_development_purposes"
+    raise RuntimeError("SECRET_KEY environment variable is not set! The application cannot start without a secure secret key.")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
-pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+import bcrypt
+legacy_pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 bearer_scheme = HTTPBearer()
 
 class LoginRequest(BaseModel):
@@ -29,10 +29,21 @@ class LoginRequest(BaseModel):
     password: str
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    if hashed.startswith("$2a$") or hashed.startswith("$2b$") or hashed.startswith("$2y$"):
+        try:
+            return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+        except Exception:
+            return False
+    try:
+        return legacy_pwd_context.verify(plain, hashed)
+    except Exception:
+        return False
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode('utf-8')
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()

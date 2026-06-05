@@ -1,9 +1,11 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from app.database import SessionLocal, engine
 from app import models
-from passlib.context import CryptContext
+from app.router_auth import hash_password
 
 models.Base.metadata.create_all(bind=engine)
-pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
 def seed_data():
     db = SessionLocal()
@@ -56,7 +58,7 @@ def seed_data():
         for u in default_users:
             db.add(models.User(
                 username=u["username"],
-                hashed_password=pwd_context.hash(u["password"]),
+                hashed_password=hash_password(u["password"]),
                 full_name=u["full_name"],
                 role=u["role"],
                 ward=u["ward"],

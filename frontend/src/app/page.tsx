@@ -469,6 +469,7 @@ function ScheduleView() {
   const [activeRules, setActiveRules] = useState<any[]>([]);
   const [selectedWard, setSelectedWard] = useState<string>('');
   const [wards, setWards] = useState<any[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>('2026-03');
 
   useEffect(() => {
     // Fetch rules to show in the summary
@@ -525,7 +526,9 @@ function ScheduleView() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({
           num_days: scheduleDays,
-          nurses: activeNurses
+          nurses: activeNurses,
+          period: selectedMonth,
+          department: selectedWard
         })
       });
       const data = await res.json();
@@ -559,7 +562,7 @@ function ScheduleView() {
             <option value={28}>28 วัน (4 สัปดาห์)</option>
             <option value={30}>30 วัน (รายเดือน)</option>
           </select>
-          <input type="month" className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" defaultValue="2026-03" />
+          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div className="flex items-center gap-3">
           {schedule && (

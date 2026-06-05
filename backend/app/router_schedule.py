@@ -56,12 +56,27 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
     ).all()
     nurse_name_to_idx = {n.name: i for i, n in enumerate(request.nurses)}
     nurse_id_to_idx = {n.id: i for i, n in enumerate(request.nurses)}
-    today = dt.date.today()
-    week_start = today - dt.timedelta(days=today.weekday())  # Monday
+    
+    # Calculate start date of the roster period
+    start_date = None
+    if request.period:
+        try:
+            if len(request.period) == 7:  # "YYYY-MM"
+                year, month = map(int, request.period.split("-"))
+                start_date = dt.date(year, month, 1)
+            elif len(request.period) == 10:  # "YYYY-MM-DD"
+                start_date = dt.date.fromisoformat(request.period)
+        except Exception:
+            pass
+
+    if not start_date:
+        today = dt.date.today()
+        start_date = dt.date(today.year, today.month, 1)
+
     for leave in approved_leaves:
         try:
             leave_date = dt.date.fromisoformat(leave.leave_date)
-            day_idx = (leave_date - week_start).days
+            day_idx = (leave_date - start_date).days
             if 0 <= day_idx < request.num_days:
                 # match by staff_name or staff_id
                 idx = nurse_name_to_idx.get(leave.staff_name)

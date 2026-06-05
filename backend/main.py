@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv() # Load environment variables before importing other modules
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.router_schedule import router as schedule_router
@@ -9,14 +12,11 @@ from app.router_ward_config import router as ward_config_router
 from app.router_leave import router as leave_router
 from app.router_auth import router as auth_router
 from app.router_users import router as users_router
-from dotenv import load_dotenv
 from app.database import engine
 from app import models
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
-
-load_dotenv() # Load environment variables
 
 app = FastAPI(title="JadVen.ai API", description="API for AI-Driven Nurse Scheduling")
 
