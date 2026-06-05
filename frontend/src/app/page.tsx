@@ -1599,16 +1599,15 @@ function WardConfigView() {
             <div className="flex justify-center">
               <button
                 onClick={saveConfig}
-                disabled={saving || saved || !isFeasible}
-                className={`px-8 py-3 rounded-xl font-bold text-lg transition-all flex items-center gap-3 shadow-lg ${!isFeasible
-                  ? 'bg-red-900/50 text-red-300 border border-red-500/30 cursor-not-allowed'
-                  : saved
+                disabled={saving || saved}
+                className={`px-8 py-3 rounded-xl font-bold text-lg transition-all flex items-center gap-3 shadow-lg ${
+                  saved
                     ? 'bg-emerald-600 text-white shadow-emerald-500/20'
                     : 'bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white shadow-brand-500/20 hover:shadow-brand-500/40'
                   } disabled:opacity-50`}
               >
-                {!isFeasible ? <AlertTriangle className="h-5 w-5" /> : saving ? <div className="h-5 w-5 rounded-full border-2 border-white/20 border-t-white animate-spin" /> : saved ? <Shield className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
-                {!isFeasible ? 'กำลังคนไม่พอ — กรุณาปรับค่า' : saving ? 'กำลังบันทึก...' : saved ? 'บันทึกสำเร็จ ✓' : 'บันทึกค่าตั้งค่าวอร์ด'}
+                {saving ? <div className="h-5 w-5 rounded-full border-2 border-white/20 border-t-white animate-spin" /> : saved ? <Shield className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
+                {saving ? 'กำลังบันทึก...' : saved ? 'บันทึกสำเร็จ ✓' : 'บันทึกค่าตั้งค่าวอร์ด'}
               </button>
             </div>
           )}
