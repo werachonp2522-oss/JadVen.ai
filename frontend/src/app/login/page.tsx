@@ -29,7 +29,8 @@ export default function LoginPage() {
             if (!res.ok) {
                 setError(data.detail || 'เข้าสู่ระบบไม่สำเร็จ');
             } else {
-                localStorage.setItem('user', JSON.stringify(data.user)); // Keep user info, NO token
+                localStorage.setItem('user', JSON.stringify(data.user));
+                localStorage.setItem('token', data.access_token); // Keep token for Bearer authentication
                 router.push('/');
             }
         } catch {

@@ -80,6 +80,7 @@ export default function Home() {
       await fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/auth/logout', { method: 'POST', credentials: 'include' });
     } catch { }
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     router.push('/login');
   };
 
