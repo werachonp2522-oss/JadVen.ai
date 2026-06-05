@@ -610,7 +610,7 @@ function ScheduleView() {
 
                   // 4. Table Headers Row
                   const headerRowNumber = 4;
-                  const headers = ['บุคลากร', ...Array.from({ length: scheduleDays }, (_, i) => `วันที่ ${i + 1}`), 'รวมกะ'];
+                  const headers = ['บุคลากร', ...Array.from({ length: scheduleDays }, (_, i) => (i + 1).toString()), 'รวมกะ'];
                   worksheet.getRow(headerRowNumber).values = headers;
                   worksheet.getRow(headerRowNumber).height = 28;
 
