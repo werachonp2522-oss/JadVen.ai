@@ -947,13 +947,16 @@ function StaffView() {
   };
 
   const handleEditClick = (person: any) => {
+    const wardExists = wards.some((w: any) => w.ward_name === person.ward);
+    const defaultWard = wards.length > 0 ? wards[0].ward_name : 'แผนก ER (ฉุกเฉิน)';
+
     setEditingStaff(person);
     setFormData({
       employee_id: person.employee_id,
       name: person.name,
       role_type: person.role_type,
       seniority: person.seniority,
-      ward: person.ward || 'แผนก ER (ฉุกเฉิน)',
+      ward: wardExists ? (person.ward || defaultWard) : defaultWard,
       is_active: person.is_active
     });
     setModalOpen(true);
@@ -962,10 +965,16 @@ function StaffView() {
   const handleDelete = async (id: number) => {
     if (confirm("คุณแน่ใจหรือไม่ที่จะลบพยาบาลท่านนี้?")) {
       try {
-        await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/staff/${id}`, { method: 'DELETE' });
+        const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/staff/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errorData = await res.json();
+          alert(errorData.detail || "เกิดข้อผิดพลาดในการลบข้อมูล");
+          return;
+        }
         fetchStaff();
       } catch (err) {
         console.error(err);
+        alert("เกิดข้อผิดพลาดในการลบข้อมูล");
       }
     }
   };
@@ -978,11 +987,16 @@ function StaffView() {
         : '' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/staff/';
       const method = editingStaff ? 'PUT' : 'POST';
 
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        alert(errorData.detail || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        return;
+      }
       setModalOpen(false);
       fetchStaff();
     } catch (err) {
