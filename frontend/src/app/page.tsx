@@ -567,16 +567,19 @@ function ScheduleView() {
               onClick={() => {
                 if (!schedule) return;
                 const rns = schedule.filter((r: any) => r.type === 'RN');
-                const nas = schedule.filter((r: any) => ['NA', 'PN'].includes(r.type));
+                const nas = schedule.filter((r: any) => r.type !== 'RN');
 
                 const days = Array.from({ length: scheduleDays }, (_, i) => `Day ${i + 1}`);
-                let csv = 'พยาบาล,' + days.join(',') + '\n';
+                let csv = 'บุคลากร,' + days.join(',') + '\n';
 
                 // Add RNs
-                rns.forEach((row: any) => { csv += row.nurse + ',' + row.shifts.join(',') + '\n'; });
-                // Add separator and NAs if any
+                if (rns.length > 0) {
+                  csv += `--- พยาบาลวิชาชีพ (RN) ---${','.repeat(scheduleDays)}\n`;
+                  rns.forEach((row: any) => { csv += row.nurse + ',' + row.shifts.join(',') + '\n'; });
+                }
+                // Add separator and non-RNs if any
                 if (nas.length > 0) {
-                  csv += `--- ทีมผู้ช่วยพยาบาล (NA/PN) ---${','.repeat(scheduleDays)}\n`;
+                  csv += `--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---${','.repeat(scheduleDays)}\n`;
                   nas.forEach((row: any) => { csv += row.nurse + ',' + row.shifts.join(',') + '\n'; });
                 }
 
@@ -628,12 +631,15 @@ function ScheduleView() {
                 doc.text(`Generated: ${new Date().toLocaleDateString('th-TH')} for Ward: ${selectedWard}`, 14, 22);
 
                 const rns = schedule.filter((r: any) => r.type === 'RN');
-                const nas = schedule.filter((r: any) => ['NA', 'PN'].includes(r.type));
+                const nas = schedule.filter((r: any) => r.type !== 'RN');
 
                 const tableBody: any[] = [];
-                rns.forEach((r: any) => tableBody.push([r.nurse, ...r.shifts]));
+                if (rns.length > 0) {
+                  tableBody.push([{ content: '--- พยาบาลวิชาชีพ (RN) ---', colSpan: scheduleDays + 1, styles: { halign: 'center', fillColor: [59, 130, 246, 0.1], textColor: [59, 130, 246], fontStyle: 'bold' } }]);
+                  rns.forEach((r: any) => tableBody.push([r.nurse, ...r.shifts]));
+                }
                 if (nas.length > 0) {
-                  tableBody.push([{ content: '--- ทีมผู้ช่วยพยาบาล (NA/PN) ---', colSpan: scheduleDays + 1, styles: { halign: 'center', fillColor: [226, 232, 240], textColor: [71, 85, 105], fontStyle: 'bold' } }]);
+                  tableBody.push([{ content: '--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---', colSpan: scheduleDays + 1, styles: { halign: 'center', fillColor: [226, 232, 240], textColor: [71, 85, 105], fontStyle: 'bold' } }]);
                   nas.forEach((r: any) => tableBody.push([r.nurse, ...r.shifts]));
                 }
 
@@ -702,8 +708,8 @@ function ScheduleView() {
               <tbody className="divide-y divide-slate-700/50">
                 {[
                   ...schedule.filter((r: any) => r.type === 'RN'),
-                  ...(schedule.some((r: any) => ['NA', 'PN'].includes(r.type)) ? [{ isSeparator: true, title: '--- ทีมผู้ช่วยพยาบาล (NA/PN) ---' }] : []),
-                  ...schedule.filter((r: any) => ['NA', 'PN'].includes(r.type))
+                  ...(schedule.some((r: any) => r.type === 'RN') && schedule.some((r: any) => r.type !== 'RN') ? [{ isSeparator: true, title: '--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---' }] : []),
+                  ...schedule.filter((r: any) => r.type !== 'RN')
                 ].map((row: any, i: number) => {
                   if (row.isSeparator) {
                     return (
