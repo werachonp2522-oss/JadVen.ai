@@ -153,9 +153,28 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             n_rns = count_shift(model, shift_matrix, NIGHT, rn_indices, d, 'n_rn')
             model.Add(sum(n_rns) >= n_min_rn)
 
-    # H3: Max shifts per week (from WardConfig)
+    # H3: Max & Min shifts per week (from WardConfig)
     nurse_total_shifts = []
     for n in all_nurses:
+        # Enforce max/min shifts per week (7 days)
+        for start_day in range(0, num_days, 7):
+            week_days = range(start_day, min(start_day + 7, num_days))
+            week_working_days = []
+            for d in week_days:
+                is_working = model.NewBoolVar(f'is_working_n{n}w{start_day // 7}d{d}')
+                model.Add(shift_matrix[(n, d)] != OFF).OnlyEnforceIf(is_working)
+                model.Add(shift_matrix[(n, d)] == OFF).OnlyEnforceIf(is_working.Not())
+                week_working_days.append(is_working)
+            
+            # Max shifts per week
+            if "H3" in active_rule_codes:
+                model.Add(sum(week_working_days) <= max_shifts)
+            
+            # Min shifts per week (only for full or mostly full weeks)
+            if len(week_days) >= 4:
+                model.Add(sum(week_working_days) >= min_shifts_week)
+                
+        # Total shifts for the entire period (used for fairness balancing)
         working_days = []
         for d in all_days:
             is_working = model.NewBoolVar(f'is_working_n{n}d{d}')
@@ -165,19 +184,13 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
         
         total_shifts = model.NewIntVar(0, num_days, f'total_shifts_n{n}')
         model.Add(total_shifts == sum(working_days))
-        
-        if "H3" in active_rule_codes:
-            model.Add(total_shifts <= max_shifts)
-        
-        # Min shifts per week
-        model.Add(total_shifts >= min_shifts_week)
-        
         nurse_total_shifts.append(total_shifts)
 
     # --- Phase 5: Fairness Boost ---
     
     # 5A: Minimum Shift Constraint - ทุกคนต้องได้อย่างน้อย min_shifts กะ
-    min_shifts = max(1, (2 * num_days) // num_nurses - 1) if num_nurses > 0 else 1
+    total_needed_shifts = (m_min_total + e_min_total + n_min_total) * num_days
+    min_shifts = max(1, (total_needed_shifts // num_nurses) - 2) if num_nurses > 0 else 1
     for n in all_nurses:
         model.Add(nurse_total_shifts[n] >= min_shifts)
 
@@ -195,10 +208,9 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
         nurse_night_counts.append(total_nights)
 
     # 5C: Objective - Minimize total workload difference + night imbalance
-    total_needed_shifts = 2 * num_days 
     avg_shifts = total_needed_shifts // num_nurses if num_nurses > 0 else 0
     
-    total_nights_needed = num_days  # 1 night shift per day
+    total_nights_needed = n_min_total * num_days
     avg_nights = total_nights_needed // num_nurses if num_nurses > 0 else 0
 
     objective_terms = []
