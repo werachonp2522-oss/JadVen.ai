@@ -15,8 +15,8 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    logging.warning("⚠️ SECRET_KEY is not set in environment! Generating a temporary random key.")
-    SECRET_KEY = secrets.token_hex(32)
+    logging.warning("⚠️ SECRET_KEY is not set in environment! Using a stable default key.")
+    SECRET_KEY = "jadven_default_stable_secret_key_for_development_purposes"
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours

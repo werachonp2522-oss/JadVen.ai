@@ -564,35 +564,176 @@ function ScheduleView() {
         <div className="flex items-center gap-3">
           {schedule && (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!schedule) return;
-                const rns = schedule.filter((r: any) => r.type === 'RN');
-                const nas = schedule.filter((r: any) => r.type !== 'RN');
+                try {
+                  const ExcelJS = await import('exceljs');
+                  const workbook = new ExcelJS.Workbook();
+                  const worksheet = workbook.addWorksheet('ตารางเวร');
 
-                const days = Array.from({ length: scheduleDays }, (_, i) => `Day ${i + 1}`);
-                let csv = 'บุคลากร,' + days.join(',') + '\n';
+                  // Enable grid lines
+                  worksheet.views = [{ showGridLines: true }];
 
-                // Add RNs
-                if (rns.length > 0) {
-                  csv += `--- พยาบาลวิชาชีพ (RN) ---${','.repeat(scheduleDays)}\n`;
-                  rns.forEach((row: any) => { csv += row.nurse + ',' + row.shifts.join(',') + '\n'; });
+                  // Set column widths
+                  worksheet.getColumn(1).width = 32; // Staff name
+                  for (let i = 0; i < scheduleDays; i++) {
+                    worksheet.getColumn(i + 2).width = 8; // Days
+                  }
+                  worksheet.getColumn(scheduleDays + 2).width = 12; // Total shifts
+
+                  const totalCols = scheduleDays + 2;
+
+                  // 1. Title Banner
+                  worksheet.mergeCells(1, 1, 1, totalCols);
+                  const titleCell = worksheet.getCell(1, 1);
+                  titleCell.value = `ตารางจัดเวร: ${selectedWard || 'แผนก ER (ฉุกเฉิน)'}`;
+                  titleCell.font = { name: 'Tahoma', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+                  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+                  titleCell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FF1E3A8A' } // Dark Blue (1E3A8A)
+                  };
+                  worksheet.getRow(1).height = 40;
+
+                  // 2. Subtitle
+                  worksheet.mergeCells(2, 1, 2, totalCols);
+                  const subtitleCell = worksheet.getCell(2, 1);
+                  const currentDate = new Date().toLocaleDateString('th-TH');
+                  subtitleCell.value = `สร้างโดย JadVen.ai (AI-assisted scheduling) | ออกรายงานเมื่อ ${currentDate}`;
+                  subtitleCell.font = { name: 'Tahoma', size: 10, italic: true, color: { argb: 'FF475569' } };
+                  subtitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+                  worksheet.getRow(2).height = 20;
+
+                  // Row 3 is empty
+                  worksheet.getRow(3).height = 15;
+
+                  // 4. Table Headers Row
+                  const headerRowNumber = 4;
+                  const headers = ['บุคลากร', ...Array.from({ length: scheduleDays }, (_, i) => `วันที่ ${i + 1}`), 'รวมกะ'];
+                  worksheet.getRow(headerRowNumber).values = headers;
+                  worksheet.getRow(headerRowNumber).height = 28;
+
+                  // Style Header Row
+                  worksheet.getRow(headerRowNumber).eachCell((cell, colNum) => {
+                    cell.font = { name: 'Tahoma', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+                    cell.fill = {
+                      type: 'pattern',
+                      pattern: 'solid',
+                      fgColor: { argb: 'FF1E293B' } // Slate-800
+                    };
+                    cell.alignment = { vertical: 'middle', horizontal: colNum === 1 ? 'left' : 'center' };
+                    cell.border = {
+                      top: { style: 'thin', color: { argb: 'FF475569' } },
+                      left: { style: 'thin', color: { argb: 'FF475569' } },
+                      bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
+                      right: { style: 'thin', color: { argb: 'FF475569' } }
+                    } as any;
+                  });
+
+                  let currentRow = 5;
+                  const rns = schedule.filter((r: any) => r.type === 'RN');
+                  const nas = schedule.filter((r: any) => r.type !== 'RN');
+
+                  const borderThin: any = {
+                    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                    right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+                  };
+
+                  const addSeparator = (title: string, bgColor: string, textColor: string) => {
+                    worksheet.mergeCells(currentRow, 1, currentRow, totalCols);
+                    const cell = worksheet.getCell(currentRow, 1);
+                    cell.value = title;
+                    cell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: textColor } };
+                    cell.fill = {
+                      type: 'pattern',
+                      pattern: 'solid',
+                      fgColor: { argb: bgColor }
+                    };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                    worksheet.getRow(currentRow).height = 24;
+                    currentRow++;
+                  };
+
+                  const addStaffRows = (staffList: any[]) => {
+                    staffList.forEach((row: any) => {
+                      const workedShifts = row.shifts.filter((s: string) => s !== 'OFF').length;
+                      const values = [row.nurse, ...row.shifts, workedShifts];
+                      
+                      const newRow = worksheet.getRow(currentRow);
+                      newRow.values = values;
+                      newRow.height = 26;
+
+                      // Style name cell
+                      const nameCell = newRow.getCell(1);
+                      nameCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+                      nameCell.alignment = { vertical: 'middle', horizontal: 'left' };
+                      nameCell.border = borderThin;
+
+                      // Style shift cells
+                      for (let i = 0; i < scheduleDays; i++) {
+                        const shiftCell = newRow.getCell(i + 2);
+                        const shiftVal = row.shifts[i];
+                        shiftCell.alignment = { vertical: 'middle', horizontal: 'center' };
+                        shiftCell.border = borderThin;
+
+                        if (shiftVal === 'M') {
+                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; // Light Emerald
+                          shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF065F46' } };
+                        } else if (shiftVal === 'E') {
+                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // Light Amber
+                          shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF92400E' } };
+                        } else if (shiftVal === 'N') {
+                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } }; // Light Purple
+                          shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF6B21A8' } };
+                        } else {
+                          // OFF
+                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate/Gray
+                          shiftCell.font = { name: 'Tahoma', size: 10, color: { argb: 'FF94A3B8' } };
+                        }
+                      }
+
+                      // Style total cell
+                      const totalCell = newRow.getCell(totalCols);
+                      totalCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF1D4ED8' } }; // Brand Blue
+                      totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+                      totalCell.alignment = { vertical: 'middle', horizontal: 'center' };
+                      totalCell.border = borderThin;
+
+                      currentRow++;
+                    });
+                  };
+
+                  if (rns.length > 0) {
+                    addSeparator('--- พยาบาลวิชาชีพ (RN) ---', 'FFDBEAFE', 'FF1E40AF');
+                    addStaffRows(rns);
+                  }
+
+                  if (nas.length > 0) {
+                    addSeparator('--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---', 'FFF1F5F9', 'FF475569');
+                    addStaffRows(nas);
+                  }
+
+                  // Write buffer and download
+                  const buffer = await workbook.xlsx.writeBuffer();
+                  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `schedule_${selectedWard.replace(/\s+/g, '_') || 'ward'}.xlsx`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (err) {
+                  console.error('Failed to export Excel:', err);
+                  alert('เกิดข้อผิดพลาดในการส่งออก Excel');
                 }
-                // Add separator and non-RNs if any
-                if (nas.length > 0) {
-                  csv += `--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---${','.repeat(scheduleDays)}\n`;
-                  nas.forEach((row: any) => { csv += row.nurse + ',' + row.shifts.join(',') + '\n'; });
-                }
-
-                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = 'schedule_jadven.csv'; a.click();
-                URL.revokeObjectURL(url);
               }}
               className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-all shadow-lg shadow-emerald-600/20"
             >
               <Download className="h-4 w-4" />
-              <span>Export CSV</span>
+              <span>Export Excel</span>
             </button>
           )}
           {schedule && (
@@ -1920,6 +2061,13 @@ function UserManagementView() {
     setLoading(true);
     try {
       const uRes = await fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/users/?t=' + new Date().getTime(), { headers: getHeaders(), cache: 'no-store' });
+      if (uRes.status === 401 || uRes.status === 403) {
+        alert('เซสชันการยืนยันตัวตนหมดอายุ หรือไม่มีสิทธิ์เข้าถึงหน้านี้ กรุณาเข้าสู่ระบบใหม่');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        return;
+      }
       if (uRes.ok) {
         setUsers(await uRes.json());
       }
@@ -1957,11 +2105,22 @@ function UserManagementView() {
       if (editUser) {
         const body: any = { full_name: formData.full_name, role: formData.role, ward: formData.ward };
         if (formData.password) body.password = formData.password;
-        await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/users/${editUser.id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(body) });
+        const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/users/${editUser.id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(body) });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          alert('ไม่สามารถแก้ไขข้อมูลผู้ใช้ได้: ' + (errData.detail || 'ข้อผิดพลาดบางอย่าง'));
+        }
       } else {
-        await fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/users/', { method: 'POST', headers: getHeaders(), body: JSON.stringify(formData) });
+        const res = await fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/users/', { method: 'POST', headers: getHeaders(), body: JSON.stringify(formData) });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          alert('ไม่สามารถเพิ่มผู้ใช้ใหม่ได้: ' + (errData.detail || 'ข้อผิดพลาดบางอย่าง'));
+        }
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+    }
     await fetchData();
     setSaving(false);
     setModalOpen(false);
