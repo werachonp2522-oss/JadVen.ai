@@ -119,7 +119,7 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
 
     # Setup roles
     rn_indices = [i for i, n in enumerate(request.nurses) if n.type == 'RN']
-    na_indices = [i for i, n in enumerate(request.nurses) if n.type in ('PN', 'NA')]
+    na_indices = [i for i, n in enumerate(request.nurses) if n.type in ('PN', 'NA', 'PL', 'TN')]
     
     # Helper: count people assigned to a specific shift (defined outside loop to avoid closure issues)
     def count_shift(model, shift_matrix, shift_val, indices, day, prefix):

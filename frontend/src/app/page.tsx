@@ -1040,12 +1040,17 @@ function StaffView() {
                       <div className="text-xs text-slate-500">{person.employee_id}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${person.role_type === 'RN' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${
+                        person.role_type === 'RN' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
                         person.role_type === 'PN' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
-                          'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        person.role_type === 'PL' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                        person.role_type === 'NA' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                          'bg-teal-500/10 text-teal-400 border-teal-500/20'
                         }`}>
                         {person.role_type === 'RN' ? 'พยาบาลวิชาชีพ (RN)' :
                           person.role_type === 'PN' ? 'ผู้ช่วยพยาบาล (PN)' :
+                          person.role_type === 'PL' ? 'พนักงานเปล (PL)' :
+                          person.role_type === 'NA' ? 'ผู้ช่วยเหลือ (NA)' :
                             'พยาบาลเทคนิค (TN)'}
                       </span>
                     </td>
@@ -1116,6 +1121,7 @@ function StaffView() {
                       <option value="RN">RN (พยาบาลวิชาชีพ)</option>
                       <option value="TN">TN (พยาบาลเทคนิค)</option>
                       <option value="PN">PN (ผู้ช่วยพยาบาล)</option>
+                      <option value="PL">PL (พนักงานเปล)</option>
                       <option value="NA">NA (ผู้ช่วยเหลือ)</option>
                     </select>
                   </div>
