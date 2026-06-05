@@ -122,15 +122,7 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    {/* Default accounts hint */}
-                    <div className="mt-6 p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
-                        <p className="text-xs text-slate-500 font-medium mb-2">🔑 บัญชีทดสอบ</p>
-                        <div className="space-y-1 text-xs text-slate-400">
-                            <p><span className="text-slate-300 font-mono">admin</span> / <span className="font-mono">admin1234</span> <span className="text-blue-400">(Admin)</span></p>
-                            <p><span className="text-slate-300 font-mono">headnurse</span> / <span className="font-mono">nurse1234</span> <span className="text-emerald-400">(Head Nurse)</span></p>
-                            <p><span className="text-slate-300 font-mono">nurse01</span> / <span className="font-mono">nurse1234</span> <span className="text-slate-400">(Nurse)</span></p>
-                        </div>
-                    </div>
+
                 </div>
             </motion.div>
         </div>
