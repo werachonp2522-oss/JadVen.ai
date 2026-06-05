@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
-from app.router_auth import get_current_user, hash_password
+from app.router_auth import get_current_user, hash_password, require_admin
 
 router = APIRouter(prefix="/users", tags=["User Management"])
 
@@ -21,11 +21,6 @@ class UserUpdate(BaseModel):
     ward: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None  # optional password change
-
-def require_admin(current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="เฉพาะผู้ดูแลระบบเท่านั้น")
-    return current_user
 
 @router.get("/")
 def list_users(current_user: models.User = Depends(require_admin), db: Session = Depends(get_db)):

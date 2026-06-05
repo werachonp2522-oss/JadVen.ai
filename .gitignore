@@ -8,6 +8,10 @@ venv/
 *.db-shm
 *.db-wal
 .env
+.env.production
+*.env.production
+.env.local
+.env.*.local
 
 # Node / Next.js
 node_modules/
