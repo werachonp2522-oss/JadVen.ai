@@ -902,6 +902,36 @@ function ConflictSolverView() {
   );
 }
 
+const getRoleBadgeStyle = (role: string) => {
+  switch (role) {
+    case 'RN': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    case 'TN': return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
+    case 'PN': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+    case 'PL': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+    case 'NA': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    case 'IT': return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
+    case 'MA': return 'bg-pink-500/10 text-pink-400 border-pink-500/20';
+    case 'SEC': return 'bg-red-500/10 text-red-400 border-red-500/20';
+    case 'ADM': return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+    default: return 'bg-teal-500/10 text-teal-400 border-teal-500/20';
+  }
+};
+
+const getRoleLabel = (role: string) => {
+  switch (role) {
+    case 'RN': return 'พยาบาลวิชาชีพ (RN)';
+    case 'TN': return 'พยาบาลเทคนิค (TN)';
+    case 'PN': return 'ผู้ช่วยพยาบาล (PN)';
+    case 'PL': return 'พนักงานเปล (PL)';
+    case 'NA': return 'ผู้ช่วยเหลือ (NA)';
+    case 'IT': return 'ไอที (IT)';
+    case 'MA': return 'แม่บ้าน/ทำความสะอาด (MA)';
+    case 'SEC': return 'รักษาความปลอดภัย (SEC)';
+    case 'ADM': return 'ธุรการ/สำนักงาน (ADM)';
+    default: return `${role} (อื่นๆ)`;
+  }
+};
+
 function StaffView() {
   const [staff, setStaff] = useState<any[]>([]);
   const [wards, setWards] = useState<any[]>([]);
@@ -1060,18 +1090,8 @@ function StaffView() {
                       <div className="text-xs text-slate-500">{person.employee_id}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${
-                        person.role_type === 'RN' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                        person.role_type === 'PN' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
-                        person.role_type === 'PL' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
-                        person.role_type === 'NA' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                          'bg-teal-500/10 text-teal-400 border-teal-500/20'
-                        }`}>
-                        {person.role_type === 'RN' ? 'พยาบาลวิชาชีพ (RN)' :
-                          person.role_type === 'PN' ? 'ผู้ช่วยพยาบาล (PN)' :
-                          person.role_type === 'PL' ? 'พนักงานเปล (PL)' :
-                          person.role_type === 'NA' ? 'ผู้ช่วยเหลือ (NA)' :
-                            'พยาบาลเทคนิค (TN)'}
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${getRoleBadgeStyle(person.role_type)}`}>
+                        {getRoleLabel(person.role_type)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-300">{person.seniority}</td>
@@ -1130,19 +1150,35 @@ function StaffView() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">ตำแหน่ง</label>
-                    <select value={formData.role_type} onChange={e => {
+                    <select value={
+                      ['RN', 'TN', 'PN', 'PL', 'NA', 'IT', 'MA', 'SEC', 'ADM'].includes(formData.role_type) 
+                        ? formData.role_type 
+                        : 'CUSTOM'
+                    } onChange={e => {
                       const newRole = e.target.value;
-                      setFormData({
-                        ...formData,
-                        role_type: newRole,
-                        employee_id: editingStaff ? formData.employee_id : `${newRole}-${Math.floor(100 + Math.random() * 900)}`
-                      });
+                      if (newRole === 'CUSTOM') {
+                        setFormData({
+                          ...formData,
+                          role_type: 'CUSTOM_TEMP'
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          role_type: newRole,
+                          employee_id: editingStaff ? formData.employee_id : `${newRole}-${Math.floor(100 + Math.random() * 900)}`
+                        });
+                      }
                     }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="RN">RN (พยาบาลวิชาชีพ)</option>
                       <option value="TN">TN (พยาบาลเทคนิค)</option>
                       <option value="PN">PN (ผู้ช่วยพยาบาล)</option>
                       <option value="PL">PL (พนักงานเปล)</option>
                       <option value="NA">NA (ผู้ช่วยเหลือ)</option>
+                      <option value="IT">IT (เจ้าหน้าที่ไอที)</option>
+                      <option value="MA">MA (แม่บ้าน / ทำความสะอาด)</option>
+                      <option value="SEC">SEC (รปภ. / รักษาความปลอดภัย)</option>
+                      <option value="ADM">ADM (ธุรการ / สำนักงาน)</option>
+                      <option value="CUSTOM">อื่นๆ (ระบุรหัสตำแหน่งเอง...)</option>
                     </select>
                   </div>
                   <div>
@@ -1153,6 +1189,27 @@ function StaffView() {
                       <option value="N/A">N/A</option>
                     </select>
                   </div>
+
+                  {!['RN', 'TN', 'PN', 'PL', 'NA', 'IT', 'MA', 'SEC', 'ADM'].includes(formData.role_type) && (
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-400 mb-1">ระบุรหัสตำแหน่งภาษาอังกฤษ (2-5 ตัว เช่น IT, SEC, MA, DR)</label>
+                      <input 
+                        required 
+                        type="text" 
+                        placeholder="e.g. IT"
+                        value={formData.role_type === 'CUSTOM_TEMP' ? '' : formData.role_type}
+                        onChange={e => {
+                          const code = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+                          setFormData({
+                            ...formData,
+                            role_type: code,
+                            employee_id: editingStaff ? formData.employee_id : `${code}-${Math.floor(100 + Math.random() * 900)}`
+                          });
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                      />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">วอร์ดสังกัด</label>
