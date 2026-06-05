@@ -1264,8 +1264,10 @@ function WardConfigView() {
   const [isAdding, setIsAdding] = useState(false);
   const [newWardName, setNewWardName] = useState('');
   const [userRole, setUserRole] = useState<string>('');
+  const [loading, setLoading] = useState(true);
 
   const fetchConfigs = () => {
+    setLoading(true);
     fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/ward-config/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
       .then(res => res.json())
       .then(data => {
@@ -1285,8 +1287,12 @@ function WardConfigView() {
           setConfigId(null);
           setSelectedWard('');
         }
+        setLoading(false);
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -1380,13 +1386,13 @@ function WardConfigView() {
     setIsDeleting(false);
   };
 
-  if (!config) return <div className="text-slate-400 text-center py-20">กำลังโหลดข้อมูล...</div>;
+  if (loading) return <div className="text-slate-400 text-center py-20">กำลังโหลดข้อมูล...</div>;
 
   // Smart Validator calculations
-  const mTotal = config.shifts?.M?.min_total || 0;
-  const eTotal = config.shifts?.E?.min_total || 0;
-  const nTotal = config.shifts?.N?.min_total || 0;
-  const maxShifts = config.max_shifts_per_week || 5;
+  const mTotal = config?.shifts?.M?.min_total || 0;
+  const eTotal = config?.shifts?.E?.min_total || 0;
+  const nTotal = config?.shifts?.N?.min_total || 0;
+  const maxShifts = config?.max_shifts_per_week || 5;
   const demandPerDay = mTotal + eTotal + nTotal;
   const demandPerWeek = demandPerDay * 7;
   const capacityPerWeek = activeStaffCount * maxShifts;
