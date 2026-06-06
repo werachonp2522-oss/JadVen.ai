@@ -1350,6 +1350,8 @@ function StaffView() {
     ward: 'แผนก ER (ฉุกเฉิน)',
     is_active: true
   });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedWardFilter, setSelectedWardFilter] = useState('all');
 
   const fetchStaff = () => {
     fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/staff/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
@@ -1445,30 +1447,74 @@ function StaffView() {
     }
   };
 
+  // Dynamic deduction of unique available wards
+  const availableWards = Array.from(new Set([
+    ...(Array.isArray(wards) ? wards.map(w => w.ward_name) : []),
+    ...staff.map(s => s.ward)
+  ].filter(Boolean)));
+
+  const filteredStaff = staff.filter(person => {
+    const matchesSearch = !searchTerm.trim() || 
+      person.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      person.employee_id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesWard = selectedWardFilter === 'all' || person.ward === selectedWardFilter;
+    return matchesSearch && matchesWard;
+  });
+
   return (
     <>
       <div className="h-full flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="relative w-full md:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="ค้นหาบุคลากร..."
+                placeholder="ค้นหาชื่อหรือรหัสบุคลากร..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
-            <button className="px-4 py-2 bg-slate-800 border border-slate-700 hover:bg-slate-700 rounded-lg text-sm text-white transition-colors">
-              ตัวกรอง (Filter)
+            <button
+              onClick={handleAddClick}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-brand-600/20"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>เพิ่มบุคลากรใหม่</span>
             </button>
           </div>
-          <button
-            onClick={handleAddClick}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-brand-600/20"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>เพิ่มบุคลากรใหม่</span>
-          </button>
+
+          {/* Department Quick Filter Pills */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-slate-400 font-medium mr-1">แผนก (Ward):</span>
+            <button
+              onClick={() => setSelectedWardFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                selectedWardFilter === 'all'
+                  ? 'bg-brand-500/10 text-brand-400 border-brand-500/30'
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700/50'
+              }`}
+            >
+              ทั้งหมด ({staff.length})
+            </button>
+            {availableWards.map((wardName: any) => {
+              const count = staff.filter(s => s.ward === wardName).length;
+              return (
+                <button
+                  key={wardName}
+                  onClick={() => setSelectedWardFilter(wardName)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    selectedWardFilter === wardName
+                      ? 'bg-brand-500/10 text-brand-400 border-brand-500/30'
+                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700/50'
+                  }`}
+                >
+                  {wardName} ({count})
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex-1 glass-card overflow-hidden flex flex-col">
@@ -1486,8 +1532,10 @@ function StaffView() {
               </thead>
               <tbody className="divide-y divide-slate-700/50">
                 {loading ? (
-                  <tr><td colSpan={5} className="text-center py-8 text-slate-400">กำลังโหลดข้อมูลจาก Database...</td></tr>
-                ) : staff.map((person) => (
+                  <tr><td colSpan={6} className="text-center py-8 text-slate-400">กำลังโหลดข้อมูลจาก Database...</td></tr>
+                ) : filteredStaff.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-slate-400">ไม่พบข้อมูลบุคลากรในแผนกนี้</td></tr>
+                ) : filteredStaff.map((person) => (
                   <tr key={person.id} className="hover:bg-slate-700/20 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-medium text-white">{person.name}</div>
