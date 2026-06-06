@@ -482,6 +482,12 @@ function ScheduleView() {
   const [wardStaff, setWardStaff] = useState<any[]>([]);
   const [startOnCallStaffId, setStartOnCallStaffId] = useState<string>('auto');
 
+  const isIT = !!(selectedWard && (
+    selectedWard.toLowerCase().includes('it') ||
+    selectedWard.includes('ไอที') ||
+    selectedWard.toLowerCase().includes('information technology')
+  ));
+
   useEffect(() => {
     if (!selectedWard) return;
     setStartOnCallStaffId('auto');
@@ -707,62 +713,90 @@ function ScheduleView() {
 
                   const addStaffRows = (staffList: any[]) => {
                     staffList.forEach((row: any) => {
+                      const displayShifts = row.shifts.map((shiftVal: string, idx: number) => {
+                        if (isIT) {
+                          if (shiftVal === 'N') {
+                            let isWeekend = false;
+                            if (selectedMonth && selectedMonth.includes('-')) {
+                              const [yrStr, moStr] = selectedMonth.split('-');
+                              const dDate = new Date(parseInt(yrStr), parseInt(moStr) - 1, idx + 1);
+                              const day = dDate.getDay();
+                              isWeekend = (day === 0 || day === 6);
+                            }
+                            return isWeekend ? 'On-Call' : 'M / N';
+                          }
+                          if (shiftVal === 'M') return 'M';
+                          if (shiftVal === 'OFF') return '—';
+                          return shiftVal;
+                        }
+                        return shiftVal;
+                      });
+
                       const workedShifts = row.shifts.filter((s: string) => s !== 'OFF').length;
-                      const values = [row.nurse, ...row.shifts, workedShifts];
+                      const morningShifts = row.shifts.filter((s: string) => s === 'M').length;
+                      const onCallShifts  = row.shifts.filter((s: string) => s === 'N').length;
+                      const onCallWeeks   = Math.round(onCallShifts / 7);
+
+                      const totalVal = isIT 
+                        ? `${morningShifts}M / ${onCallWeeks}Wk`
+                        : workedShifts;
+
+                      const values = [row.nurse, ...displayShifts, totalVal];
                       
                       const newRow = worksheet.getRow(currentRow);
                       newRow.values = values;
                       newRow.height = 26;
-
-                      // Style name cell
-                      const nameCell = newRow.getCell(1);
-                      nameCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF1E293B' } };
-                      nameCell.alignment = { vertical: 'middle', horizontal: 'left' };
-                      nameCell.border = borderThin;
-
-                      // Style shift cells
-                      for (let i = 0; i < scheduleDays; i++) {
-                        const shiftCell = newRow.getCell(i + 2);
-                        const shiftVal = row.shifts[i];
-                        shiftCell.alignment = { vertical: 'middle', horizontal: 'center' };
-                        shiftCell.border = borderThin;
-
-                        if (shiftVal === 'M') {
-                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; // Light Emerald
-                          shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF065F46' } };
-                        } else if (shiftVal === 'E') {
-                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // Light Amber
-                          shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF92400E' } };
-                        } else if (shiftVal === 'N') {
-                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } }; // Light Purple
-                          shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF6B21A8' } };
-                        } else {
-                          // OFF
-                          shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate/Gray
-                          shiftCell.font = { name: 'Tahoma', size: 10, color: { argb: 'FF94A3B8' } };
-                        }
-                      }
-
-                      // Style total cell
-                      const totalCell = newRow.getCell(totalCols);
-                      totalCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF1D4ED8' } }; // Brand Blue
-                      totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
-                      totalCell.alignment = { vertical: 'middle', horizontal: 'center' };
-                      totalCell.border = borderThin;
-
-                      currentRow++;
-                    });
-                  };
-
-                  if (rns.length > 0) {
-                    addSeparator('--- พยาบาลวิชาชีพ (RN) ---', 'FFDBEAFE', 'FF1E40AF');
-                    addStaffRows(rns);
-                  }
-
-                  if (nas.length > 0) {
-                    addSeparator('--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---', 'FFF1F5F9', 'FF475569');
-                    addStaffRows(nas);
-                  }
+ 
+                       // Style name cell
+                       const nameCell = newRow.getCell(1);
+                       nameCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+                       nameCell.alignment = { vertical: 'middle', horizontal: 'left' };
+                       nameCell.border = borderThin;
+ 
+                       // Style shift cells
+                       for (let i = 0; i < scheduleDays; i++) {
+                         const shiftCell = newRow.getCell(i + 2);
+                         const shiftVal = row.shifts[i];
+                         shiftCell.alignment = { vertical: 'middle', horizontal: 'center' };
+                         shiftCell.border = borderThin;
+ 
+                         if (shiftVal === 'M') {
+                           shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; // Light Emerald
+                           shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF065F46' } };
+                         } else if (shiftVal === 'E') {
+                           shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // Light Amber
+                           shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF92400E' } };
+                         } else if (shiftVal === 'N') {
+                           shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } }; // Light Purple
+                           shiftCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF6B21A8' } };
+                         } else {
+                           // OFF
+                           shiftCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate/Gray
+                           shiftCell.font = { name: 'Tahoma', size: 10, color: { argb: 'FF94A3B8' } };
+                         }
+                       }
+ 
+                       // Style total cell
+                       const totalCell = newRow.getCell(totalCols);
+                       totalCell.font = { name: 'Tahoma', size: 10, bold: true, color: { argb: 'FF1D4ED8' } }; // Brand Blue
+                       totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+                       totalCell.alignment = { vertical: 'middle', horizontal: 'center' };
+                       totalCell.border = borderThin;
+ 
+                       currentRow++;
+                     });
+                   };
+ 
+                   if (rns.length > 0) {
+                     addSeparator('--- พยาบาลวิชาชีพ (RN) ---', 'FFDBEAFE', 'FF1E40AF');
+                     addStaffRows(rns);
+                   }
+ 
+                   if (nas.length > 0) {
+                     const sepTitle = isIT ? '--- เจ้าหน้าที่ไอที ---' : '--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---';
+                     addSeparator(sepTitle, 'FFF1F5F9', 'FF475569');
+                     addStaffRows(nas);
+                   }
 
                   // Write buffer and download
                   const buffer = await workbook.xlsx.writeBuffer();
@@ -883,13 +917,6 @@ function ScheduleView() {
         {schedule && (
           <div className="flex-1 overflow-auto">
             {(() => {
-              // --- Detect if this is an IT department ---
-              const isIT = selectedWard && (
-                selectedWard.toLowerCase().includes('it') ||
-                selectedWard.includes('ไอที') ||
-                selectedWard.toLowerCase().includes('information technology')
-              );
-
               // --- Pre-compute on-call week ranges for IT ---
               // A "week" = 7 consecutive days (0-based). An on-call week for a nurse
               // is any 7-day window where that nurse has N shifts.
@@ -934,7 +961,7 @@ function ScheduleView() {
                   <thead className="sticky top-0 bg-slate-800/90 backdrop-blur shadow-sm z-10">
                     {isIT && onCallWeekRanges.length > 0 && (
                       <tr className="border-b border-slate-700/50">
-                        <th className="px-6 py-2 text-xs text-slate-500"></th>
+                        <th className="sticky left-0 bg-slate-800 z-20 px-6 py-2 text-xs text-slate-500 border-r border-slate-700/50"></th>
                         {[...Array(scheduleDays)].map((_, i) => {
                           const wIdx = getOnCallWeekIdx(i);
                           const isFirst = wIdx >= 0 && onCallWeekRanges[wIdx]?.start === i;
@@ -964,7 +991,7 @@ function ScheduleView() {
                       </tr>
                     )}
                     <tr>
-                      <th className="px-6 py-4 font-semibold text-slate-300">บุคลากร</th>
+                      <th className="sticky left-0 bg-slate-800 z-20 px-6 py-4 font-semibold text-slate-300 border-r border-slate-700/50">บุคลากร</th>
                       {[...Array(scheduleDays)].map((_, i) => {
                         const wIdx = getOnCallWeekIdx(i);
                         return (
@@ -1000,8 +1027,8 @@ function ScheduleView() {
                       const onCallWeeks   = Math.round(onCallShifts / 7);
 
                       return (
-                        <tr key={i} className="hover:bg-slate-700/20 transition-colors">
-                          <td className="px-6 py-4">
+                        <tr key={i} className="hover:bg-slate-700/20 transition-colors group">
+                          <td className="sticky left-0 bg-slate-900 z-10 group-hover:bg-slate-800 transition-colors px-6 py-4 border-r border-slate-700/50">
                             <div className="font-medium text-slate-200">{row.nurse.split('(')[0].trim()}</div>
                             <div className="text-xs text-slate-500">{row.type} {row.nurse.includes('Senior') ? '- Senior' : row.nurse.includes('Junior') ? '- Junior' : ''}</div>
                             {isIT && (
