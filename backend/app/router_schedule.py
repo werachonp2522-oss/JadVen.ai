@@ -151,10 +151,11 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
         # 1. Segment days into weeks (7 days)
         weeks = []
         for start_day in range(0, num_days, 7):
-            end_day = min(start_day + 7, num_days)
-            # Qualify as a week if it has at least 4 days
-            if (end_day - start_day) >= 4:
-                weeks.append(range(start_day, end_day))
+            if num_days - start_day < 14:
+                weeks.append(range(start_day, num_days))
+                break
+            else:
+                weeks.append(range(start_day, start_day + 7))
         num_weeks = len(weeks)
         
         # 2. Weekly on-call variables (0 or 1)

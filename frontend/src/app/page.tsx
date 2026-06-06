@@ -924,25 +924,30 @@ function ScheduleView() {
               // A "week" = 7 consecutive days (0-based). An on-call week for a nurse
               // is any 7-day window where that nurse has N shifts.
               // Build a map: dayIndex -> which nurse's on-call week it is.
-              const onCallDayNurseMap: Record<number, number> = {};
-              const onCallWeekRanges: Array<{start: number; end: number}> = [];
-              if (isIT && schedule.length > 0) {
-                const numWeeks = Math.floor(scheduleDays / 7);
-                for (let w = 0; w < numWeeks; w++) {
-                  const wStart = w * 7;
-                  const wEnd = Math.min(wStart + 7, scheduleDays);
-                  // Find which nurse is on-call (has N) in this week
-                  for (let nIdx = 0; nIdx < schedule.length; nIdx++) {
-                    const nurse = schedule[nIdx];
-                    const hasN = nurse.shifts.slice(wStart, wEnd).some((s: string) => s === 'N');
-                    if (hasN) {
-                      for (let d = wStart; d < wEnd; d++) onCallDayNurseMap[d] = nIdx;
-                      onCallWeekRanges.push({ start: wStart, end: wEnd - 1 });
-                      break;
-                    }
-                  }
-                }
-              }
+               const onCallDayNurseMap: Record<number, number> = {};
+               const onCallWeekRanges: Array<{start: number; end: number}> = [];
+               if (isIT && schedule.length > 0) {
+                 for (let startDay = 0; startDay < scheduleDays; startDay += 7) {
+                   const wStart = startDay;
+                   let wEnd = Math.min(startDay + 7, scheduleDays);
+                   if (scheduleDays - startDay < 14) {
+                     wEnd = scheduleDays;
+                   }
+                   // Find which nurse is on-call (has N) in this week
+                   for (let nIdx = 0; nIdx < schedule.length; nIdx++) {
+                     const nurse = schedule[nIdx];
+                     const hasN = nurse.shifts.slice(wStart, wEnd).some((s: string) => s === 'N');
+                     if (hasN) {
+                       for (let d = wStart; d < wEnd; d++) onCallDayNurseMap[d] = nIdx;
+                       onCallWeekRanges.push({ start: wStart, end: wEnd - 1 });
+                       break;
+                     }
+                   }
+                   if (scheduleDays - startDay < 14) {
+                     break;
+                   }
+                 }
+               }
 
               // --- Color palette for on-call week banding (cycles per week) ---
               const weekBandColors = [
