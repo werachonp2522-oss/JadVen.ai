@@ -521,9 +521,11 @@ function ScheduleView() {
 
   useEffect(() => {
     // Fetch rules to show in the summary
-    fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/rules/')
+    fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/rules/', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
       .then(res => res.json())
-      .then(data => setActiveRules(data.filter((r: any) => r.is_active)))
+      .then(data => { if (Array.isArray(data)) setActiveRules(data.filter((r: any) => r.is_active)); })
       .catch(err => console.error(err));
 
     // Fetch wards
@@ -1645,10 +1647,12 @@ function RuleBuilderView() {
   const [loading, setLoading] = useState(true);
 
   const fetchRules = () => {
-    fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/rules/')
+    fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/rules/', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
       .then(res => res.json())
       .then(data => {
-        setRules(data);
+        if (Array.isArray(data)) { setRules(data); }
         setLoading(false);
       })
       .catch(err => console.error(err));
@@ -1661,7 +1665,7 @@ function RuleBuilderView() {
   const handleToggle = async (id: number, currentStatus: boolean) => {
     setRules(prev => prev.map(r => r.id === id ? { ...r, is_active: !currentStatus } : r));
     try {
-      await fetch(`' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/rules/${id}/toggle?is_active=${!currentStatus}`, {
+      await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/rules/${id}/toggle?is_active=${!currentStatus}`, {
         method: 'PUT'
       });
     } catch (error) {
