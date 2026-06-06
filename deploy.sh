@@ -22,8 +22,8 @@ NODE_BIN="node"
 
 # ---------- Step 1: Install system dependencies ----------
 echo "[1/7] Installing system dependencies..."
-sudo apt-get update -qq
-sudo apt-get install -y python3 python3-pip python3-venv nodejs npm nginx -qq
+sudo apt-get update -qq || true
+sudo apt-get install -y python3 python3-pip python3-venv nodejs npm nginx -qq || true
 
 # ---------- Step 2: Copy project ----------
 echo "[2/7] Setting up application directory..."
