@@ -927,26 +927,36 @@ function ScheduleView() {
                const onCallDayNurseMap: Record<number, number> = {};
                const onCallWeekRanges: Array<{start: number; end: number}> = [];
                if (isIT && schedule.length > 0) {
-                 for (let startDay = 0; startDay < scheduleDays; startDay += 7) {
-                   const wStart = startDay;
-                   let wEnd = Math.min(startDay + 7, scheduleDays);
-                   if (scheduleDays - startDay < 14) {
-                     wEnd = scheduleDays;
+                 // 1. Build week ranges based on actual Mondays
+                 const weeks: Array<{start: number; end: number}> = [];
+                 let currentWeekStart = 0;
+                 const [yrStr, moStr] = (selectedMonth || '2026-06').split('-');
+                 const year = parseInt(yrStr);
+                 const month = parseInt(moStr);
+                 
+                 for (let d = 0; d < scheduleDays; d++) {
+                   const dDate = new Date(year, month - 1, d + 1);
+                   if (d > 0 && dDate.getDay() === 1) {
+                     weeks.push({ start: currentWeekStart, end: d - 1 });
+                     currentWeekStart = d;
                    }
-                   // Find which nurse is on-call (has N) in this week
+                 }
+                 weeks.push({ start: currentWeekStart, end: scheduleDays - 1 });
+                 
+                 // 2. Populate maps
+                 weeks.forEach((wRange) => {
                    for (let nIdx = 0; nIdx < schedule.length; nIdx++) {
                      const nurse = schedule[nIdx];
-                     const hasN = nurse.shifts.slice(wStart, wEnd).some((s: string) => s === 'N');
+                     const hasN = nurse.shifts.slice(wRange.start, wRange.end + 1).some((s: string) => s === 'N');
                      if (hasN) {
-                       for (let d = wStart; d < wEnd; d++) onCallDayNurseMap[d] = nIdx;
-                       onCallWeekRanges.push({ start: wStart, end: wEnd - 1 });
+                       for (let d = wRange.start; d <= wRange.end; d++) {
+                         onCallDayNurseMap[d] = nIdx;
+                       }
+                       onCallWeekRanges.push(wRange);
                        break;
                      }
                    }
-                   if (scheduleDays - startDay < 14) {
-                     break;
-                   }
-                 }
+                 });
                }
 
               // --- Color palette for on-call week banding (cycles per week) ---

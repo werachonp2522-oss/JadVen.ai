@@ -148,14 +148,19 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
     if is_it_dept:
         # IT Specific Constraints
         
-        # 1. Segment days into weeks (7 days)
+        # 1. Segment days into weeks based on actual calendar weeks (Monday starts)
+        import datetime as dt
         weeks = []
-        for start_day in range(0, num_days, 7):
-            if num_days - start_day < 14:
-                weeks.append(range(start_day, num_days))
-                break
+        current_week = []
+        for d in all_days:
+            current_date = start_date + dt.timedelta(days=d)
+            if d > 0 and current_date.weekday() == 0:
+                weeks.append(range(current_week[0], current_week[-1] + 1))
+                current_week = [d]
             else:
-                weeks.append(range(start_day, start_day + 7))
+                current_week.append(d)
+        if current_week:
+            weeks.append(range(current_week[0], current_week[-1] + 1))
         num_weeks = len(weeks)
         
         # 2. Weekly on-call variables (0 or 1)
@@ -230,15 +235,35 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
                     start_position = (pos + 1) % rotation_size
                     break
 
-        # 5. Hard-enforce the strict rotation for every week
+        # 5. Enforce exactly 1 person is ON_CALL (NIGHT) per week
         for w in range(num_weeks):
-            assigned_idx = ordered_nurse_indices[(start_position + w) % rotation_size]
-            model.Add(week_on_call[(assigned_idx, w)] == 1)
-            for n in all_nurses:
-                if n != assigned_idx:
-                    model.Add(week_on_call[(n, w)] == 0)
+            model.Add(sum(week_on_call[(n, w)] for n in all_nurses) == 1)
 
-        # 6. Tie week_on_call to daily shift assignments
+        # 6. Apply start week constraints (with fallback if starting nurse is unavailable)
+        override_objective_terms = []
+        n_start1 = ordered_nurse_indices[start_position]
+        n_start2 = ordered_nurse_indices[(start_position + 1) % rotation_size]
+        model.Add(week_on_call[(n_start1, 0)] + week_on_call[(n_start2, 0)] == 1)
+        
+        is_start_skipped = model.NewBoolVar('start_skipped')
+        model.Add(is_start_skipped == week_on_call[(n_start2, 0)])
+        override_objective_terms.append(is_start_skipped * 50)
+
+        # 7. Transition-based rotation logic: each week w's on-call must transition to either next or next+1 in sequence
+        for w in range(num_weeks - 1):
+            for i in range(rotation_size):
+                n_curr  = ordered_nurse_indices[i]
+                n_next1 = ordered_nurse_indices[(i + 1) % rotation_size]
+                n_next2 = ordered_nurse_indices[(i + 2) % rotation_size]
+                
+                model.Add(week_on_call[(n_curr, w)] <= week_on_call[(n_next1, w+1)] + week_on_call[(n_next2, w+1)])
+                
+                # Penalty for skipping the immediate next person
+                is_skipped = model.NewBoolVar(f'skip_w{w}_i{i}')
+                model.Add(is_skipped >= week_on_call[(n_curr, w)] + week_on_call[(n_next2, w+1)] - 1)
+                override_objective_terms.append(is_skipped * 10)
+
+        # 8. Tie week_on_call to daily shift assignments
         for w in range(num_weeks):
             for n in all_nurses:
                 for d in weeks[w]:
@@ -246,7 +271,6 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
                         model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(week_on_call[(n, w)])
                         model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(week_on_call[(n, w)].Not())
 
-        override_objective_terms = []  # kept for compatibility with objective builder below
                 
         # 5. Office Hours (MORNING) covering weekdays
         import datetime as dt
