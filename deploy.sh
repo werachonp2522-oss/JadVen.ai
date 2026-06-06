@@ -47,6 +47,12 @@ SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 DATABASE_URL=sqlite:///./jadven.db
 EOF
   echo "  ⚠️  Created .env — please edit GEMINI_API_KEY!"
+else
+  # If .env exists but doesn't have SECRET_KEY, append it
+  if ! grep -q "SECRET_KEY" .env; then
+    echo "SECRET_KEY=$(python3 -c \"import secrets; print(secrets.token_hex(32))\")" >> .env
+    echo "  ✅ Appended SECRET_KEY to existing .env"
+  fi
 fi
 
 # Run database migrations and seed
