@@ -93,11 +93,27 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
     all_days = range(num_days)
 
 
-    # Shifts: 0: OFF, 1: Morning, 2: Evening, 3: Night
+    # Dynamic active shifts list
+    # Always starts with "OFF" as index 0
+    active_shifts = ["OFF"]
+    if shift_reqs:
+        active_shifts += list(shift_reqs.keys())
+    else:
+        # Fallback to standard M, E, N
+        active_shifts += ["M", "E", "N"]
+        shift_reqs = {
+            "M": {"min_total": 1, "min_rn": 1},
+            "E": {"min_total": 1, "min_rn": 0},
+            "N": {"min_total": 1, "min_rn": 1}
+        }
+    
     OFF = 0
-    MORNING = 1
-    EVENING = 2
-    NIGHT = 3
+    num_shifts = len(active_shifts)
+    
+    # Map shift string codes to indices
+    MORNING = active_shifts.index("M") if "M" in active_shifts else -1
+    EVENING = active_shifts.index("E") if "E" in active_shifts else -1
+    NIGHT = active_shifts.index("N") if "N" in active_shifts else -1
     
     # Model
     model = cp_model.CpModel()
@@ -106,7 +122,7 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
     shift_matrix = {}
     for n in all_nurses:
         for d in all_days:
-            shift_matrix[(n, d)] = model.NewIntVar(0, 3, f'shift_n{n}d{d}')
+            shift_matrix[(n, d)] = model.NewIntVar(0, num_shifts - 1, f'shift_n{n}d{d}')
 
     # --- Approved Leave: Force OFF on leave days ---
     for nurse_idx, leave_days in leave_map.items():
@@ -148,8 +164,9 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
                 # If on-call this week, shifts for all days in this week are NIGHT
                 # If not on-call, shifts cannot be NIGHT (must be MORNING or OFF)
                 for d in weeks[w]:
-                    model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(week_on_call[(n, w)])
-                    model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(week_on_call[(n, w)].Not())
+                    if NIGHT != -1:
+                        model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(week_on_call[(n, w)])
+                        model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(week_on_call[(n, w)].Not())
                     
         # 4. Rotation: No consecutive weeks on-call
         for n in all_nurses:
@@ -177,17 +194,12 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             is_wkday = current_date.weekday() < 5 # Monday-Friday
             
             if is_wkday:
-                # Weekdays: At least 1 of the other staff (non-on-call) must be working MORNING
-                # The other can be OFF.
-                # Since the on-call person is NIGHT, they are not MORNING.
-                m_shifts = []
-                for n in all_nurses:
-                    is_m = model.NewBoolVar(f'is_m_n{n}_d{d}')
-                    model.Add(shift_matrix[(n, d)] == MORNING).OnlyEnforceIf(is_m)
-                    model.Add(shift_matrix[(n, d)] != MORNING).OnlyEnforceIf(is_m.Not())
-                    m_shifts.append(is_m)
-                # At least 1 person is MORNING (office support)
-                model.Add(sum(m_shifts) >= 1)
+                # Weekdays: Non-on-call staff MUST be working MORNING (M)
+                for w_idx, w_range in enumerate(weeks):
+                    if d in w_range:
+                        for n in all_nurses:
+                            if MORNING != -1:
+                                model.Add(shift_matrix[(n, d)] == MORNING).OnlyEnforceIf(week_on_call[(n, w_idx)].Not())
             else:
                 # Weekends: Non-on-call staff must be OFF
                 # That means only the on-call person is working (NIGHT). The rest are OFF (0).
@@ -216,8 +228,11 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             night_bools = []
             for d in all_days:
                 is_night = model.NewBoolVar(f'is_night_count_n{n}d{d}')
-                model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(is_night)
-                model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(is_night.Not())
+                if NIGHT != -1:
+                    model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(is_night)
+                    model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(is_night.Not())
+                else:
+                    model.Add(is_night == 0)
                 night_bools.append(is_night)
             total_nights = model.NewIntVar(0, num_days, f'total_nights_n{n}')
             model.Add(total_nights == sum(night_bools))
@@ -238,7 +253,7 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
 
     else:
         # H1: "ห้ามดึกต่อเช้า" (Night -> Morning is blocked)
-        if "H1" in active_rule_codes:
+        if "H1" in active_rule_codes and NIGHT != -1 and MORNING != -1:
             for n in all_nurses:
                 for d in range(num_days - 1):
                     is_night_today = model.NewBoolVar(f'is_night_n{n}d{d}')
@@ -251,11 +266,37 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
                     
                     model.AddImplication(is_night_today, is_morning_tomorrow.Not())
 
+        # S1: "ห้ามบ่ายต่อเช้า" (Evening -> Morning is blocked - Quick Return)
+        if "S1" in active_rule_codes and EVENING != -1 and MORNING != -1:
+            for n in all_nurses:
+                for d in range(num_days - 1):
+                    is_eve_today = model.NewBoolVar(f'is_eve_n{n}d{d}')
+                    model.Add(shift_matrix[(n, d)] == EVENING).OnlyEnforceIf(is_eve_today)
+                    model.Add(shift_matrix[(n, d)] != EVENING).OnlyEnforceIf(is_eve_today.Not())
+                    
+                    is_morn_tomorrow = model.NewBoolVar(f'is_morn_s1_n{n}d{d+1}')
+                    model.Add(shift_matrix[(n, d+1)] == MORNING).OnlyEnforceIf(is_morn_tomorrow)
+                    model.Add(shift_matrix[(n, d+1)] != MORNING).OnlyEnforceIf(is_morn_tomorrow.Not())
+                    
+                    model.AddImplication(is_eve_today, is_morn_tomorrow.Not())
+
+        # W2: "จำกัดการทำงานติดต่อกันสูงสุด" (Max 6 consecutive working days)
+        if "W2" in active_rule_codes:
+            for n in all_nurses:
+                for d in range(num_days - 6):
+                    consec_days = range(d, d + 7)
+                    offs = []
+                    for cd in consec_days:
+                        is_off = model.NewBoolVar(f'consec_off_n{n}d{cd}')
+                        model.Add(shift_matrix[(n, cd)] == OFF).OnlyEnforceIf(is_off)
+                        model.Add(shift_matrix[(n, cd)] != OFF).OnlyEnforceIf(is_off.Not())
+                        offs.append(is_off)
+                    model.Add(sum(offs) >= 1)
+
         # Setup roles
         rn_indices = [i for i, n in enumerate(request.nurses) if n.type == 'RN']
-        na_indices = [i for i, n in enumerate(request.nurses) if n.type != 'RN']
         
-        # Helper: count people assigned to a specific shift (defined outside loop to avoid closure issues)
+        # Helper: count people assigned to a specific shift
         def count_shift(model, shift_matrix, shift_val, indices, day, prefix):
             bools = [model.NewBoolVar(f'{prefix}_d{day}_n{n}') for n in indices]
             for n, b in zip(indices, bools):
@@ -263,29 +304,20 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
                 model.Add(shift_matrix[(n, day)] != shift_val).OnlyEnforceIf(b.Not())
             return bools
 
+        # Apply shift requirements dynamically
         for d in all_days:
-            # --- Ward Config based staffing ---
-            
-            # Morning (M) - min total and min RN from config
-            m_all = count_shift(model, shift_matrix, MORNING, list(all_nurses), d, 'm_all')
-            model.Add(sum(m_all) >= m_min_total)
-            if m_min_rn > 0 and rn_indices:
-                m_rns = count_shift(model, shift_matrix, MORNING, rn_indices, d, 'm_rn')
-                model.Add(sum(m_rns) >= m_min_rn)
-            
-            # Evening (E) - min total from config
-            e_all = count_shift(model, shift_matrix, EVENING, list(all_nurses), d, 'e_all')
-            model.Add(sum(e_all) >= e_min_total)
-            if e_min_rn > 0 and rn_indices:
-                e_rns = count_shift(model, shift_matrix, EVENING, rn_indices, d, 'e_rn')
-                model.Add(sum(e_rns) >= e_min_rn)
-            
-            # Night (N) - min total and min RN from config
-            n_all = count_shift(model, shift_matrix, NIGHT, list(all_nurses), d, 'n_all')
-            model.Add(sum(n_all) >= n_min_total)
-            if n_min_rn > 0 and rn_indices:
-                n_rns = count_shift(model, shift_matrix, NIGHT, rn_indices, d, 'n_rn')
-                model.Add(sum(n_rns) >= n_min_rn)
+            for shift_code, reqs in shift_reqs.items():
+                if shift_code in active_shifts:
+                    shift_idx = active_shifts.index(shift_code)
+                    min_total = reqs.get("min_total", 0)
+                    min_rn = reqs.get("min_rn", 0)
+                    
+                    if min_total > 0:
+                        shift_all = count_shift(model, shift_matrix, shift_idx, list(all_nurses), d, f'{shift_code}_all')
+                        model.Add(sum(shift_all) >= min_total)
+                    if min_rn > 0 and rn_indices:
+                        shift_rns = count_shift(model, shift_matrix, shift_idx, rn_indices, d, f'{shift_code}_rn')
+                        model.Add(sum(shift_rns) >= min_rn)
 
         # H3: Max & Min shifts per week (from WardConfig)
         nurse_total_shifts = []
@@ -323,7 +355,7 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
         # --- Phase 5: Fairness Boost ---
         
         # 5A: Minimum Shift Constraint - ทุกคนต้องได้อย่างน้อย min_shifts กะ
-        total_needed_shifts = (m_min_total + e_min_total + n_min_total) * num_days
+        total_needed_shifts = sum(reqs.get("min_total", 0) for reqs in shift_reqs.values()) * num_days
         min_shifts = max(1, (total_needed_shifts // num_nurses) - 2) if num_nurses > 0 else 1
         for n in all_nurses:
             model.Add(nurse_total_shifts[n] >= min_shifts)
@@ -334,17 +366,20 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             night_bools = []
             for d in all_days:
                 is_night = model.NewBoolVar(f'is_night_count_n{n}d{d}')
-                model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(is_night)
-                model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(is_night.Not())
+                if NIGHT != -1:
+                    model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(is_night)
+                    model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(is_night.Not())
+                else:
+                    model.Add(is_night == 0)
                 night_bools.append(is_night)
             total_nights = model.NewIntVar(0, num_days, f'total_nights_n{n}')
             model.Add(total_nights == sum(night_bools))
             nurse_night_counts.append(total_nights)
 
-        # 5C: Objective - Minimize total workload difference + night imbalance
+        # 5C: Objective - Minimize total workload difference + night imbalance + weekend unfairness
         avg_shifts = total_needed_shifts // num_nurses if num_nurses > 0 else 0
         
-        total_nights_needed = n_min_total * num_days
+        total_nights_needed = (shift_reqs.get("N", {}).get("min_total", 0) if "N" in active_shifts else 0) * num_days
         avg_nights = total_nights_needed // num_nurses if num_nurses > 0 else 0
 
         objective_terms = []
@@ -358,12 +393,58 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             objective_terms.append(abs_diff)
             
             # Night balance (weight x2 because night shifts matter more)
-            night_diff = model.NewIntVar(-num_days, num_days, f'night_diff_n{n}')
-            model.Add(night_diff == nurse_night_counts[n] - avg_nights)
-            abs_night_diff = model.NewIntVar(0, num_days, f'abs_night_diff_n{n}')
-            model.Add(abs_night_diff >= night_diff)
-            model.Add(abs_night_diff >= -night_diff)
-            objective_terms.append(abs_night_diff * 2)
+            if NIGHT != -1:
+                night_diff = model.NewIntVar(-num_days, num_days, f'night_diff_n{n}')
+                model.Add(night_diff == nurse_night_counts[n] - avg_nights)
+                abs_night_diff = model.NewIntVar(0, num_days, f'abs_night_diff_n{n}')
+                model.Add(abs_night_diff >= night_diff)
+                model.Add(abs_night_diff >= -night_diff)
+                objective_terms.append(abs_night_diff * 2)
+
+        # W1: "เฉลี่ยวันหยุดสุดสัปดาห์" (Weekend Off Fairness)
+        if "W1" in active_rule_codes:
+            import datetime as dt
+            start_date = None
+            if request.period:
+                try:
+                    if len(request.period) == 7:  # "YYYY-MM"
+                        year, month = map(int, request.period.split("-"))
+                        start_date = dt.date(year, month, 1)
+                    elif len(request.period) == 10:  # "YYYY-MM-DD"
+                        start_date = dt.date.fromisoformat(request.period)
+                except Exception:
+                    pass
+            if not start_date:
+                today = dt.date.today()
+                start_date = dt.date(today.year, today.month, 1)
+            
+            weekend_indices = []
+            for d in all_days:
+                current_date = start_date + dt.timedelta(days=d)
+                if current_date.weekday() >= 5:  # Saturday or Sunday
+                    weekend_indices.append(d)
+            
+            if weekend_indices and num_nurses > 0:
+                nurse_weekend_offs = []
+                for n in all_nurses:
+                    off_days = []
+                    for d in weekend_indices:
+                        is_off = model.NewBoolVar(f'wk_off_n{n}_d{d}')
+                        model.Add(shift_matrix[(n, d)] == OFF).OnlyEnforceIf(is_off)
+                        model.Add(shift_matrix[(n, d)] != OFF).OnlyEnforceIf(is_off.Not())
+                        off_days.append(is_off)
+                    total_wk_offs = model.NewIntVar(0, len(weekend_indices), f'wk_offs_n{n}')
+                    model.Add(total_wk_offs == sum(off_days))
+                    nurse_weekend_offs.append(total_wk_offs)
+                
+                avg_wk_offs = len(weekend_indices) // num_nurses
+                for n in all_nurses:
+                    diff = model.NewIntVar(-len(weekend_indices), len(weekend_indices), f'wk_diff_n{n}')
+                    model.Add(diff == nurse_weekend_offs[n] - avg_wk_offs)
+                    abs_diff = model.NewIntVar(0, len(weekend_indices), f'abs_wk_diff_n{n}')
+                    model.Add(abs_diff >= diff)
+                    model.Add(abs_diff >= -diff)
+                    objective_terms.append(abs_diff * 3)
 
         model.Minimize(sum(objective_terms))
 

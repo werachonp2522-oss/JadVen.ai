@@ -60,3 +60,30 @@ class WardConfig(WardConfigBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
 
+# --- Swap Request Schemas ---
+class SwapRequestBase(BaseModel):
+    requester_username: str
+    requester_name: str
+    request_date: str
+    request_shift: str
+    target_username: str
+    target_name: str
+    target_date: str
+    target_shift: str
+    ward: str
+    status: str = "pending_target"
+
+class SwapRequestCreate(BaseModel):
+    request_date: str
+    request_shift: str
+    target_username: str
+    target_date: str
+    target_shift: str
+
+class SwapRequestUpdate(BaseModel):
+    status: str  # e.g., accepted_target, rejected_target, approved, rejected_admin
+
+class SwapRequestResponse(SwapRequestBase):
+    id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

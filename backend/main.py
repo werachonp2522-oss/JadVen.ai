@@ -12,6 +12,7 @@ from app.router_ward_config import router as ward_config_router
 from app.router_leave import router as leave_router
 from app.router_auth import router as auth_router
 from app.router_users import router as users_router
+from app.router_swap import router as swap_router
 from app.database import engine
 from app import models
 
@@ -56,3 +57,4 @@ app.include_router(ward_config_router, prefix="/api")
 app.include_router(leave_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
+app.include_router(swap_router, prefix="/api")

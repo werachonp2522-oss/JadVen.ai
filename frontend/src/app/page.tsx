@@ -223,6 +223,13 @@ export default function Home() {
             badge={pendingLeaves > 0 ? pendingLeaves : undefined}
           />
           <NavItem
+            icon={<Activity />}
+            label="แลกเวร (Shift Swap)"
+            isActive={activeTab === 'swap'}
+            onClick={() => setActiveTab('swap')}
+            isOpen={sidebarOpen}
+          />
+          <NavItem
             icon={<BarChart3 />}
             label="แดชบอร์ด (Dashboard)"
             isActive={activeTab === 'dashboard'}
@@ -283,6 +290,7 @@ export default function Home() {
             {activeTab === 'rules' && "ตัวสร้างกฎครอบจักรวาล (Universal Rule Builder)"}
             {activeTab === 'wardconfig' && "ตั้งค่าความต้องการบุคลากรประจำวอร์ด"}
             {activeTab === 'leave' && "จัดการวันลาบุคลากร"}
+            {activeTab === 'swap' && "ระบบแลกเวร (Shift Swap)"}
             {activeTab === 'dashboard' && "แดชบอร์ดสถิติ"}
             {activeTab === 'users' && "จัดการผู้ใช้งานระบบ (Admin)"}
             {activeTab === 'calendar' && "ปฏิทินตารางเวร (Calendar)"}
@@ -312,6 +320,7 @@ export default function Home() {
               {activeTab === 'rules' && <RuleBuilderView />}
               {activeTab === 'wardconfig' && <WardConfigView />}
               {activeTab === 'leave' && <LeaveView />}
+              {activeTab === 'swap' && <ShiftSwapView />}
               {activeTab === 'dashboard' && <DashboardView />}
               {activeTab === 'users' && <UserManagementView />}
               {activeTab === 'calendar' && <CalendarView />}
@@ -1954,6 +1963,348 @@ function LeaveView() {
           </div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function ShiftSwapView() {
+  const [swaps, setSwaps] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [staff, setStaff] = useState<any[]>([]);
+  const [targetStaff, setTargetStaff] = useState<any[]>([]);
+  const [targetStaffId, setTargetStaffId] = useState<string>('');
+  const [requestDate, setRequestDate] = useState<string>('');
+  const [targetDate, setTargetDate] = useState<string>('');
+  const [submitting, setSubmitting] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<'create' | 'incoming' | 'outgoing' | 'head_approval'>('incoming');
+  const [headPendingSwaps, setHeadPendingSwaps] = useState<any[]>([]);
+
+  useEffect(() => {
+    const uStr = localStorage.getItem('user');
+    if (uStr) {
+      try {
+        const u = JSON.parse(uStr);
+        setCurrentUser(u);
+        if (u.role === 'head_nurse' || u.role === 'admin') {
+          setActiveSubTab('head_approval');
+        } else {
+          setActiveSubTab('incoming');
+        }
+      } catch (e) {}
+    }
+  }, []);
+
+  const fetchSwaps = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const rInc = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/swap/incoming', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const dInc = await rInc.json();
+
+      const rOut = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/swap/outgoing', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const dOut = await rOut.json();
+
+      setSwaps([...(Array.isArray(dInc) ? dInc : []), ...(Array.isArray(dOut) ? dOut : [])]);
+
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.role === 'head_nurse' || user.role === 'admin') {
+        const rHead = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/swap/pending-approval', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const dHead = await rHead.json();
+        setHeadPendingSwaps(Array.isArray(dHead) ? dHead : []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  const fetchStaff = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/staff/', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (Array.isArray(data) && currentUser) {
+        setStaff(data);
+        const filtered = data.filter((s: any) => s.is_active && s.ward === currentUser.ward && s.name !== currentUser.full_name);
+        setTargetStaff(filtered);
+        if (filtered.length > 0) setTargetStaffId(String(filtered[0].id));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchSwaps();
+      fetchStaff();
+    }
+  }, [currentUser, fetchSwaps, fetchStaff]);
+
+  const handleCreateRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetStaffId || !requestDate || !targetDate) {
+      alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/swap/request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          target_user_id: parseInt(targetStaffId),
+          request_date: requestDate,
+          target_date: targetDate
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("ส่งคำขอแลกเวรเรียบร้อยแล้ว! รอเพื่อนร่วมงานตอบรับ");
+        setRequestDate('');
+        setTargetDate('');
+        fetchSwaps();
+        setActiveSubTab('outgoing');
+      } else {
+        alert(data.detail || "ไม่สามารถขอแลกเวรได้");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    }
+    setSubmitting(false);
+  };
+
+  const handleRespond = async (swapId: number, accept: boolean) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/swap/${swapId}/respond?accept=${accept}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(accept ? "คุณได้ตอบรับคำขอแลกเวรนี้แล้ว รอหัวหน้าพยาบาลอนุมัติ" : "คุณได้ปฏิเสธคำขอแลกเวรแล้ว");
+        fetchSwaps();
+      } else {
+        alert(data.detail || "เกิดข้อผิดพลาด");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleApprove = async (swapId: number, approve: boolean) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + `/api/swap/${swapId}/approve?approve=${approve}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(approve ? "อนุมัติการแลกเวรสำเร็จ! ระบบได้ทำการสลับเวรในตารางแล้ว" : "ปฏิเสธการอนุมัติสำเร็จ");
+        fetchSwaps();
+      } else {
+        alert(data.detail || "เกิดข้อผิดพลาด");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const incomingSwaps = swaps.filter((s: any) => currentUser && s.target_user.username === currentUser.username);
+  const outgoingSwaps = swaps.filter((s: any) => currentUser && s.requester.username === currentUser.username);
+
+  const statusBadge = (status: string) => {
+    const badges: any = {
+      pending_peer: 'bg-blue-500/10 text-blue-400 border-blue-500/30 (รอเพื่อนร่วมงานตอบรับ)',
+      pending_head: 'bg-amber-500/10 text-amber-400 border-amber-500/30 (รอหัวหน้าอนุมัติ)',
+      approved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 (อนุมัติแล้ว)',
+      rejected: 'bg-red-500/10 text-red-400 border-red-500/30 (หัวหน้าไม่อนุมัติ)',
+      declined: 'bg-gray-500/10 text-gray-400 border-gray-500/30 (เพื่อนปฏิเสธ)'
+    };
+    return badges[status] || status;
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="text-center space-y-2 mb-6">
+        <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand-600/20 to-purple-600/20 items-center justify-center mb-2 shadow-inner border border-white/5">
+          <Activity className="h-8 w-8 text-brand-400" />
+        </div>
+        <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">ระบบขอแลกเวร (Shift Swap Exchange)</h2>
+        <p className="text-slate-400">ขอสลับเวรกับเพื่อนร่วมงานในแผนก และรอการอนุมัติจากหัวหน้าพยาบาลแบบเรียลไทม์</p>
+      </div>
+
+      <div className="flex border-b border-slate-700">
+        {(currentUser?.role === 'head_nurse' || currentUser?.role === 'admin') && (
+          <button
+            onClick={() => setActiveSubTab('head_approval')}
+            className={`px-4 py-2 font-medium text-sm transition-all border-b-2 ${activeSubTab === 'head_approval' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+          >
+            อนุมัติการแลกเวร ({headPendingSwaps.length})
+          </button>
+        )}
+        <button
+          onClick={() => setActiveSubTab('incoming')}
+          className={`px-4 py-2 font-medium text-sm transition-all border-b-2 ${activeSubTab === 'incoming' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          คำขอแลกเวรถึงฉัน ({incomingSwaps.length})
+        </button>
+        <button
+          onClick={() => setActiveSubTab('outgoing')}
+          className={`px-4 py-2 font-medium text-sm transition-all border-b-2 ${activeSubTab === 'outgoing' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          คำขอของฉัน ({outgoingSwaps.length})
+        </button>
+        <button
+          onClick={() => setActiveSubTab('create')}
+          className={`px-4 py-2 font-medium text-sm transition-all border-b-2 ${activeSubTab === 'create' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          สร้างคำขอใหม่
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        {activeSubTab === 'create' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 max-w-md mx-auto">
+            <h3 className="text-lg font-bold text-white mb-4">ส่งคำขอแลกเวรใหม่</h3>
+            <form onSubmit={handleCreateRequest} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">เพื่อนร่วมงานในแผนก ({currentUser?.ward})</label>
+                {targetStaff.length === 0 ? (
+                  <p className="text-slate-500 text-sm">ไม่พบเพื่อนพนักงานท่านอื่นในแผนกของคุณ</p>
+                ) : (
+                  <select
+                    value={targetStaffId}
+                    onChange={e => setTargetStaffId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    {targetStaff.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.role_type})</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">วันที่ต้องการแลกเวรออก (วันของคุณ)</label>
+                <input
+                  required
+                  type="date"
+                  value={requestDate}
+                  onChange={e => setRequestDate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">วันที่ต้องการแลกรับแทน (วันของเพื่อน)</label>
+                <input
+                  required
+                  type="date"
+                  value={targetDate}
+                  onChange={e => setTargetDate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={submitting || targetStaff.length === 0}
+                className="w-full py-2 bg-brand-600 hover:bg-brand-500 rounded-lg text-white font-medium transition-colors disabled:opacity-50"
+              >
+                {submitting ? "กำลังส่ง..." : "ส่งคำขอ"}
+              </button>
+            </form>
+          </motion.div>
+        )}
+
+        {activeSubTab === 'incoming' && (
+          <div className="space-y-3">
+            {incomingSwaps.length === 0 && <p className="text-slate-500 text-center py-10">ไม่มีคำขอแลกเวรส่งถึงคุณ</p>}
+            {incomingSwaps.map((swap: any) => (
+              <motion.div key={swap.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-white">ผู้ส่ง: {swap.requester.full_name}</p>
+                  <p className="text-sm text-slate-400">
+                    แลกเวรของเขาในวันที่ <span className="text-brand-400 font-medium">{swap.request_date}</span> กับเวรของคุณในวันที่ <span className="text-purple-400 font-medium">{swap.target_date}</span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    สถานะ: {statusBadge(swap.status)}
+                  </p>
+                </div>
+                {swap.status === 'pending_peer' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => handleRespond(swap.id, true)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1">
+                      <CheckCircle className="h-3.5 w-3.5" /> ยอมรับ
+                    </button>
+                    <button onClick={() => handleRespond(swap.id, false)} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-semibold flex items-center gap-1">
+                      <XCircle className="h-3.5 w-3.5" /> ปฏิเสธ
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {activeSubTab === 'outgoing' && (
+          <div className="space-y-3">
+            {outgoingSwaps.length === 0 && <p className="text-slate-500 text-center py-10">คุณยังไม่เคยส่งคำขอแลกเวร</p>}
+            {outgoingSwaps.map((swap: any) => (
+              <motion.div key={swap.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-white">ส่งถึง: {swap.target_user.full_name}</p>
+                  <p className="text-sm text-slate-400">
+                    แลกเวรของคุณในวันที่ <span className="text-brand-400 font-medium">{swap.request_date}</span> กับเวรของเขาในวันที่ <span className="text-purple-400 font-medium">{swap.target_date}</span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    สถานะ: {statusBadge(swap.status)}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {activeSubTab === 'head_approval' && (
+          <div className="space-y-3">
+            {headPendingSwaps.length === 0 && <p className="text-slate-500 text-center py-10">ไม่มีคำขอสลับเวรที่รอการอนุมัติ</p>}
+            {headPendingSwaps.map((swap: any) => (
+              <motion.div key={swap.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-white">ผู้ร้องขอสลับเวร: {swap.requester.full_name} 🔁 {swap.target_user.full_name}</p>
+                  <p className="text-sm text-slate-400">
+                    - เวรของ {swap.requester.full_name} วันที่ <span className="text-brand-400 font-medium">{swap.request_date}</span>
+                    <br />
+                    - เวรของ {swap.target_user.full_name} วันที่ <span className="text-purple-400 font-medium">{swap.target_date}</span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    แผนก: {swap.requester.ward} (ทั้งสองยอมรับแล้ว รอการตัดสินใจของหัวหน้า)
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleApprove(swap.id, true)} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1">
+                    <CheckCircle className="h-3.5 w-3.5" /> อนุมัติการสลับ
+                  </button>
+                  <button onClick={() => handleApprove(swap.id, false)} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-semibold flex items-center gap-1">
+                    <XCircle className="h-3.5 w-3.5" /> ปฏิเสธ
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

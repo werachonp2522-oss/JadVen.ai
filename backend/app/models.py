@@ -65,3 +65,18 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
+class SwapRequest(Base):
+    __tablename__ = "swap_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requester_username = Column(String, index=True)
+    requester_name = Column(String)
+    request_date = Column(String)  # YYYY-MM-DD
+    request_shift = Column(String)
+    target_username = Column(String, index=True)
+    target_name = Column(String)
+    target_date = Column(String)  # YYYY-MM-DD
+    target_shift = Column(String)
+    ward = Column(String, index=True)
+    status = Column(String, default="pending_target")  # pending_target, accepted_target, rejected_target, approved, rejected_admin
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
