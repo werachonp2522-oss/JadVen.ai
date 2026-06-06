@@ -479,6 +479,24 @@ function ScheduleView() {
   const [selectedWard, setSelectedWard] = useState<string>('');
   const [wards, setWards] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-03');
+  const [wardStaff, setWardStaff] = useState<any[]>([]);
+  const [startOnCallStaffId, setStartOnCallStaffId] = useState<string>('auto');
+
+  useEffect(() => {
+    if (!selectedWard) return;
+    setStartOnCallStaffId('auto');
+    fetch('' + (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000') + '/api/staff/', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const filtered = data.filter((s: any) => s.is_active && (s.ward === selectedWard || (!s.ward && selectedWard === 'แผนก ER (ฉุกเฉิน)')));
+          setWardStaff(filtered);
+        }
+      })
+      .catch(err => console.error(err));
+  }, [selectedWard]);
 
   useEffect(() => {
     // Fetch rules to show in the summary
@@ -537,7 +555,8 @@ function ScheduleView() {
           num_days: scheduleDays,
           nurses: activeNurses,
           period: selectedMonth,
-          department: selectedWard
+          department: selectedWard,
+          start_on_call_staff_id: startOnCallStaffId !== 'auto' ? startOnCallStaffId : undefined
         })
       });
       const data = await res.json();
@@ -572,6 +591,23 @@ function ScheduleView() {
             <option value={30}>30 วัน (รายเดือน)</option>
           </select>
           <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          {selectedWard && (selectedWard.toLowerCase().includes('it') || selectedWard.includes('ไอที') || selectedWard.toLowerCase().includes('information technology')) && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 whitespace-nowrap">เริ่มเวร On-Call:</span>
+              <select 
+                value={startOnCallStaffId} 
+                onChange={(e) => setStartOnCallStaffId(e.target.value)} 
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="auto">🔄 อัตโนมัติ (ต่อจากเดือนก่อน)</option>
+                {wardStaff.map((s) => (
+                  <option key={s.id} value={s.id.toString()}>
+                    👤 {s.employee_id} - {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {schedule && (

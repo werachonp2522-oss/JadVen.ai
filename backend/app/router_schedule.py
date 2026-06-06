@@ -19,6 +19,7 @@ class ScheduleRequest(BaseModel):
     nurses: List[Nurse]
     period: Optional[str] = None      # e.g., "2026-03"
     department: Optional[str] = None  # e.g., "แผนก ER (ฉุกเฉิน)"
+    start_on_call_staff_id: Optional[str] = None
 
 @router.post("/generate")
 def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
@@ -133,8 +134,16 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
 
     # --- Constraints ---
     is_it_dept = False
-    if request.department and ("it" in request.department.lower() or "ไอที" in request.department):
-        is_it_dept = True
+    if request.department:
+        dept_lower = request.department.lower()
+        # Match various IT department name formats (Thai/English)
+        if ("it" in dept_lower or 
+            "ไอที" in request.department or 
+            "ไอที" in dept_lower or
+            "งานit" in dept_lower or
+            "แผนกit" in dept_lower or
+            "information technology" in dept_lower):
+            is_it_dept = True
 
     if is_it_dept:
         # IT Specific Constraints
@@ -172,6 +181,71 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
         for n in all_nurses:
             for w in range(num_weeks - 1):
                 model.Add(week_on_call[(n, w)] + week_on_call[(n, w+1)] <= 1)
+
+        # 4.5. On-Call Continuity and Manual Override for Week 1 (Week index 0)
+        forced_start_idx = None
+        if request.start_on_call_staff_id:
+            # Try to match by nurse id
+            for idx, nurse in enumerate(request.nurses):
+                if nurse.id == request.start_on_call_staff_id:
+                    forced_start_idx = idx
+                    break
+
+        prev_period = None
+        if request.period and len(request.period) == 7:  # "YYYY-MM"
+            try:
+                y, m = map(int, request.period.split("-"))
+                if m == 1:
+                    prev_y, prev_m = y - 1, 12
+                else:
+                    prev_y, prev_m = y, m - 1
+                prev_period = f"{prev_y:04d}-{prev_m:02d}"
+            except Exception:
+                pass
+
+        last_on_call_staff_name = None
+        if prev_period:
+            prev_schedule_record = db.query(models.ScheduleHistory).filter(
+                models.ScheduleHistory.period == prev_period,
+                models.ScheduleHistory.department == (request.department or "งานไอที")
+            ).order_by(models.ScheduleHistory.created_at.desc()).first()
+
+            if prev_schedule_record and prev_schedule_record.schedule_data:
+                try:
+                    prev_schedule = prev_schedule_record.schedule_data
+                    max_n_shifts = 0
+                    for row in prev_schedule:
+                        nurse_name = row.get("nurse")
+                        shifts = row.get("shifts", [])
+                        last_7_shifts = shifts[-7:] if len(shifts) >= 7 else shifts
+                        n_count = last_7_shifts.count("N")
+                        if n_count > max_n_shifts:
+                            max_n_shifts = n_count
+                            last_on_call_staff_name = nurse_name
+                except Exception:
+                    pass
+
+        prev_nurse_idx = None
+        if last_on_call_staff_name:
+            for idx, nurse in enumerate(request.nurses):
+                if nurse.name == last_on_call_staff_name:
+                    prev_nurse_idx = idx
+                    break
+
+        # Apply constraints based on override or automatic transition
+        override_objective_terms = []
+        if forced_start_idx is not None:
+            # Manual override: force selected nurse to start on-call in Week 1
+            model.Add(week_on_call[(forced_start_idx, 0)] == 1)
+        elif prev_nurse_idx is not None and num_nurses > 1:
+            # Rule 1: The last on-call staff of previous month cannot be on-call in week 1
+            model.Add(week_on_call[(prev_nurse_idx, 0)] == 0)
+            
+            # Rule 2: Soft preference for the next nurse in sequence
+            next_nurse_idx = (prev_nurse_idx + 1) % num_nurses
+            pref_term = model.NewIntVar(0, 5, f'pref_term_next')
+            model.Add(pref_term == 5 * (1 - week_on_call[(next_nurse_idx, 0)]))
+            override_objective_terms.append(pref_term)
                 
         # 5. Office Hours (MORNING) covering weekdays
         import datetime as dt
@@ -248,6 +322,9 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             model.Add(abs_diff >= diff)
             model.Add(abs_diff >= -diff)
             objective_terms.append(abs_diff)
+            
+        if override_objective_terms:
+            objective_terms.extend(override_objective_terms)
             
         model.Minimize(sum(objective_terms))
 
