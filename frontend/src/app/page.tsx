@@ -640,7 +640,10 @@ function ScheduleView() {
                   // 1. Title Banner
                   worksheet.mergeCells(1, 1, 1, totalCols);
                   const titleCell = worksheet.getCell(1, 1);
-                  titleCell.value = `ตารางจัดเวร: ${selectedWard || 'แผนก ER (ฉุกเฉิน)'}`;
+                  const monthLabel = selectedMonth
+                    ? new Date(selectedMonth + '-01').toLocaleDateString('th-TH', { year: 'numeric', month: 'long' })
+                    : '';
+                  titleCell.value = `ตารางจัดเวร: ${selectedWard || 'แผนก ER (ฉุกเฉิน)'}${monthLabel ? '  |  ' + monthLabel : ''}`;
                   titleCell.font = { name: 'Tahoma', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
                   titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
                   titleCell.fill = {
@@ -654,7 +657,7 @@ function ScheduleView() {
                   worksheet.mergeCells(2, 1, 2, totalCols);
                   const subtitleCell = worksheet.getCell(2, 1);
                   const currentDate = new Date().toLocaleDateString('th-TH');
-                  subtitleCell.value = `สร้างโดย JadVen.ai (AI-assisted scheduling) | ออกรายงานเมื่อ ${currentDate}`;
+                  subtitleCell.value = `สร้างโดย JadVen.ai (AI-assisted scheduling) | ประจำเดือน: ${monthLabel || '-'} | ออกรายงานเมื่อ ${currentDate}`;
                   subtitleCell.font = { name: 'Tahoma', size: 10, italic: true, color: { argb: 'FF475569' } };
                   subtitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
                   worksheet.getRow(2).height = 20;
