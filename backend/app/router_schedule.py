@@ -170,6 +170,13 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             for w in range(num_weeks):
                 week_on_call[(n, w)] = model.NewBoolVar(f'week_on_call_n{n}_w{w}')
                 
+        # 2.5. Special limit: any staff with '470' in their ID/name → at most 1 on-call week per month
+        for n in all_nurses:
+            nurse_id   = request.nurses[n].id
+            nurse_name = request.nurses[n].name
+            if '470' in nurse_id or '470' in nurse_name:
+                model.Add(sum(week_on_call[(n, w)] for w in range(num_weeks)) <= 1)
+                
         # 3. Determine rotation order: sort IT staff by numeric part of employee ID
         #    e.g. "IT-357 (ชื่อ - Senior)" → 357, so order becomes 357→470→490→...
         import re as _re
