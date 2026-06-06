@@ -190,9 +190,8 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
         )
         rotation_size = len(ordered_nurse_indices)
 
-        # 4. Determine starting position from manual override or previous-month history
-        # ─────────────────────────────────────────────────────────────────────────────
-        #   Manual override: admin selects the nurse who should start Week 1
+        # 4. Determine starting position and queue-based week assignments
+        # ──────────────────────────────────────────────────────────────
         forced_start_idx = None
         if request.start_on_call_staff_id:
             for idx, nurse in enumerate(request.nurses):
@@ -209,7 +208,11 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             except Exception:
                 pass
 
-        last_on_call_staff_name = None
+        prev_rec = None
+        last_assigned_week_in_prev = {}
+        for i, n_idx in enumerate(ordered_nurse_indices):
+            last_assigned_week_in_prev[n_idx] = -100 + i
+
         if prev_period:
             prev_rec = db.query(models.ScheduleHistory).filter(
                 models.ScheduleHistory.period == prev_period,
@@ -218,65 +221,106 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
 
             if prev_rec and prev_rec.schedule_data:
                 try:
-                    max_n = 0
+                    prev_num_days = len(prev_rec.schedule_data[0]["shifts"])
+                    prev_y, prev_m = map(int, prev_period.split("-"))
+                    prev_start_date = dt.date(prev_y, prev_m, 1)
+                    
+                    prev_weeks = []
+                    current_week = []
+                    for d in range(prev_num_days):
+                        current_date = prev_start_date + dt.timedelta(days=d)
+                        if d > 0 and current_date.weekday() == 0:
+                            prev_weeks.append(range(current_week[0], current_week[-1] + 1))
+                            current_week = [d]
+                        else:
+                            current_week.append(d)
+                    if current_week:
+                        prev_weeks.append(range(current_week[0], current_week[-1] + 1))
+                    
+                    for w_idx, w_range in enumerate(prev_weeks):
+                        for row in prev_rec.schedule_data:
+                            nurse_name = row.get("nurse")
+                            shifts = row.get("shifts", [])
+                            w_shifts = shifts[w_range.start : w_range.stop]
+                            if "N" in w_shifts:
+                                for idx in all_nurses:
+                                    if request.nurses[idx].name == nurse_name:
+                                        last_assigned_week_in_prev[idx] = w_idx
+                                        break
+                except Exception as e:
+                    print("Error parsing previous month history:", e)
+
+        last_day_on_call_idx = None
+        if prev_rec and prev_rec.schedule_data:
+            try:
+                for idx in all_nurses:
                     for row in prev_rec.schedule_data:
-                        n_count = row.get("shifts", [])[-7:].count("N")
-                        if n_count > max_n:
-                            max_n = n_count
-                            last_on_call_staff_name = row.get("nurse")
-                except Exception:
-                    pass
+                        if row.get("nurse") == request.nurses[idx].name:
+                            shifts = row.get("shifts", [])
+                            if shifts and shifts[-1] == "N":
+                                last_day_on_call_idx = idx
+                                break
+            except Exception:
+                pass
 
-        # Compute start_position in the rotation list
-        start_position = 0
-        if forced_start_idx is not None:
-            # Find where forced nurse sits in rotation order
-            for pos, n_idx in enumerate(ordered_nurse_indices):
-                if n_idx == forced_start_idx:
-                    start_position = pos
-                    break
-        elif last_on_call_staff_name:
-            # The last on-call nurse of prev month → next in rotation starts
-            for pos, n_idx in enumerate(ordered_nurse_indices):
-                if request.nurses[n_idx].name == last_on_call_staff_name:
-                    start_position = (pos + 1) % rotation_size
-                    break
+        is_continuation = False
+        if request.period:
+            try:
+                y, m = map(int, request.period.split("-"))
+                first_day_date = dt.date(y, m, 1)
+                if first_day_date.weekday() != 0:  # 0 is Monday
+                    is_continuation = True
+            except Exception:
+                pass
 
-        # 5. Enforce exactly 1 person is ON_CALL (NIGHT) per week
+        assigned_nurse_per_week = {}
+        virtual_last_assigned = {
+            n_idx: last_assigned_week_in_prev[n_idx] 
+            for n_idx in all_nurses
+        }
+        current_month_on_call_counts = {n_idx: 0 for n_idx in all_nurses}
+
         for w in range(num_weeks):
-            model.Add(sum(week_on_call[(n, w)] for n in all_nurses) == 1)
+            assigned_idx = None
+            if w == 0 and forced_start_idx is not None:
+                assigned_idx = forced_start_idx
+            elif w == 0 and is_continuation and last_day_on_call_idx is not None:
+                assigned_idx = last_day_on_call_idx
+            else:
+                candidates = sorted(list(all_nurses), key=lambda n: virtual_last_assigned[n])
+                for cand in candidates:
+                    cand_name = request.nurses[cand].name
+                    cand_id = request.nurses[cand].id
+                    is_470 = '470' in cand_id or '470' in cand_name
+                    if is_470 and current_month_on_call_counts[cand] >= 1:
+                        continue
+                    assigned_idx = cand
+                    break
+                if assigned_idx is None:
+                    assigned_idx = candidates[0]
+            
+            assigned_nurse_per_week[w] = assigned_idx
+            virtual_last_assigned[assigned_idx] = 100 + w
+            current_month_on_call_counts[assigned_idx] += 1
 
-        # 6. Apply start week constraints (with fallback if starting nurse is unavailable)
-        override_objective_terms = []
-        n_start1 = ordered_nurse_indices[start_position]
-        n_start2 = ordered_nurse_indices[(start_position + 1) % rotation_size]
-        model.Add(week_on_call[(n_start1, 0)] + week_on_call[(n_start2, 0)] == 1)
-        
-        is_start_skipped = model.NewBoolVar('start_skipped')
-        model.Add(is_start_skipped == week_on_call[(n_start2, 0)])
-        override_objective_terms.append(is_start_skipped * 50)
+        # Enforce weekly on-call assignments
+        for w in range(num_weeks):
+            assigned_n = assigned_nurse_per_week[w]
+            for n in all_nurses:
+                if n == assigned_n:
+                    model.Add(week_on_call[(n, w)] == 1)
+                else:
+                    model.Add(week_on_call[(n, w)] == 0)
 
-        # 7. Transition-based rotation logic: each week w's on-call must transition to either next or next+1 in sequence
-        for w in range(num_weeks - 1):
-            for i in range(rotation_size):
-                n_curr  = ordered_nurse_indices[i]
-                n_next1 = ordered_nurse_indices[(i + 1) % rotation_size]
-                n_next2 = ordered_nurse_indices[(i + 2) % rotation_size]
-                
-                model.Add(week_on_call[(n_curr, w)] <= week_on_call[(n_next1, w+1)] + week_on_call[(n_next2, w+1)])
-                
-                # Penalty for skipping the immediate next person
-                is_skipped = model.NewBoolVar(f'skip_w{w}_i{i}')
-                model.Add(is_skipped >= week_on_call[(n_curr, w)] + week_on_call[(n_next2, w+1)] - 1)
-                override_objective_terms.append(is_skipped * 10)
-
-        # 8. Tie week_on_call to daily shift assignments
+        # Tie week_on_call to daily shift assignments
         for w in range(num_weeks):
             for n in all_nurses:
                 for d in weeks[w]:
                     if NIGHT != -1:
                         model.Add(shift_matrix[(n, d)] == NIGHT).OnlyEnforceIf(week_on_call[(n, w)])
                         model.Add(shift_matrix[(n, d)] != NIGHT).OnlyEnforceIf(week_on_call[(n, w)].Not())
+
+        override_objective_terms = []
 
                 
         # 5. Office Hours (MORNING) covering weekdays

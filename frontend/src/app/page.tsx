@@ -488,6 +488,21 @@ function ScheduleView() {
     selectedWard.toLowerCase().includes('information technology')
   ));
 
+  const getDaysInSelectedMonth = (): number => {
+    if (!selectedMonth || !selectedMonth.includes('-')) return 30;
+    const [yrStr, moStr] = selectedMonth.split('-');
+    const year = parseInt(yrStr);
+    const month = parseInt(moStr);
+    return new Date(year, month, 0).getDate();
+  };
+
+  useEffect(() => {
+    const days = getDaysInSelectedMonth();
+    if (scheduleDays === 28 || scheduleDays === 30 || scheduleDays === 31) {
+      setScheduleDays(days);
+    }
+  }, [selectedMonth]);
+
   useEffect(() => {
     if (!selectedWard) return;
     setStartOnCallStaffId('auto');
@@ -594,7 +609,7 @@ function ScheduleView() {
             <option value={7}>7 วัน (รายสัปดาห์)</option>
             <option value={14}>14 วัน (ครึ่งเดือน)</option>
             <option value={28}>28 วัน (4 สัปดาห์)</option>
-            <option value={30}>30 วัน (รายเดือน)</option>
+            <option value={getDaysInSelectedMonth()}>{getDaysInSelectedMonth()} วัน (รายเดือน)</option>
           </select>
           <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
           {selectedWard && (selectedWard.toLowerCase().includes('it') || selectedWard.includes('ไอที') || selectedWard.toLowerCase().includes('information technology')) && (
