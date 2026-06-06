@@ -182,6 +182,13 @@ def generate_schedule(request: ScheduleRequest, db: Session = Depends(get_db)):
             for w in range(num_weeks - 1):
                 model.Add(week_on_call[(n, w)] + week_on_call[(n, w+1)] <= 1)
 
+        # 4a. Special limit: any staff with '470' in their ID/name → at most 1 on-call week per month
+        for n in all_nurses:
+            nurse_id   = request.nurses[n].id
+            nurse_name = request.nurses[n].name
+            if '470' in nurse_id or '470' in nurse_name:
+                model.Add(sum(week_on_call[(n, w)] for w in range(num_weeks)) <= 1)
+
         # 4.5. On-Call Continuity and Manual Override for Week 1 (Week index 0)
         forced_start_idx = None
         if request.start_on_call_staff_id:
