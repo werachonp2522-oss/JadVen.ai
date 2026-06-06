@@ -882,74 +882,227 @@ function ScheduleView() {
 
         {schedule && (
           <div className="flex-1 overflow-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="sticky top-0 bg-slate-800/90 backdrop-blur shadow-sm z-10">
-                <tr>
-                  <th className="px-6 py-4 font-semibold text-slate-300">บุคลากร</th>
-                  {[...Array(scheduleDays)].map((_, i) => (
-                    <th key={i} className="px-4 py-4 font-semibold text-center text-slate-300">
-                      <div className="text-xs text-slate-500 mb-1">วันที่ {i + 1}</div>
-                    </th>
-                  ))}
-                  <th className="px-6 py-4 font-semibold text-center text-slate-300 border-l border-slate-700/50">รวมกะ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/50">
-                {[
-                  ...schedule.filter((r: any) => r.type === 'RN'),
-                  ...(schedule.some((r: any) => r.type === 'RN') && schedule.some((r: any) => r.type !== 'RN') ? [{ isSeparator: true, title: '--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---' }] : []),
-                  ...schedule.filter((r: any) => r.type !== 'RN')
-                ].map((row: any, i: number) => {
-                  if (row.isSeparator) {
-                    return (
-                      <tr key={`sep-${i}`} className="bg-slate-800/80">
-                        <td colSpan={scheduleDays + 2} className="px-6 py-2 text-center text-sm font-bold text-slate-400 border-y border-slate-700 uppercase tracking-widest">
-                          {row.title}
-                        </td>
-                      </tr>
-                    );
+            {(() => {
+              // --- Detect if this is an IT department ---
+              const isIT = selectedWard && (
+                selectedWard.toLowerCase().includes('it') ||
+                selectedWard.includes('ไอที') ||
+                selectedWard.toLowerCase().includes('information technology')
+              );
+
+              // --- Pre-compute on-call week ranges for IT ---
+              // A "week" = 7 consecutive days (0-based). An on-call week for a nurse
+              // is any 7-day window where that nurse has N shifts.
+              // Build a map: dayIndex -> which nurse's on-call week it is.
+              const onCallDayNurseMap: Record<number, number> = {};
+              const onCallWeekRanges: Array<{start: number; end: number}> = [];
+              if (isIT && schedule.length > 0) {
+                const numWeeks = Math.floor(scheduleDays / 7);
+                for (let w = 0; w < numWeeks; w++) {
+                  const wStart = w * 7;
+                  const wEnd = Math.min(wStart + 7, scheduleDays);
+                  // Find which nurse is on-call (has N) in this week
+                  for (let nIdx = 0; nIdx < schedule.length; nIdx++) {
+                    const nurse = schedule[nIdx];
+                    const hasN = nurse.shifts.slice(wStart, wEnd).some((s: string) => s === 'N');
+                    if (hasN) {
+                      for (let d = wStart; d < wEnd; d++) onCallDayNurseMap[d] = nIdx;
+                      onCallWeekRanges.push({ start: wStart, end: wEnd - 1 });
+                      break;
+                    }
                   }
+                }
+              }
 
-                  // Calculate total worked shifts
-                  const workedShifts = row.shifts.filter((s: string) => s !== 'OFF').length;
+              // --- Color palette for on-call week banding (cycles per week) ---
+              const weekBandColors = [
+                'bg-purple-900/25 border-purple-700/30',
+                'bg-violet-900/20 border-violet-700/30',
+                'bg-indigo-900/20 border-indigo-700/30',
+                'bg-fuchsia-900/20 border-fuchsia-700/30',
+              ];
+              const getOnCallWeekIdx = (dayIdx: number): number => {
+                for (let i = 0; i < onCallWeekRanges.length; i++) {
+                  if (dayIdx >= onCallWeekRanges[i].start && dayIdx <= onCallWeekRanges[i].end)
+                    return i;
+                }
+                return -1;
+              };
 
-                  return (
-                    <tr key={i} className="hover:bg-slate-700/20 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-slate-200">{row.nurse.split('(')[0].trim()}</div>
-                        <div className="text-xs text-slate-500">{row.type} {row.nurse.includes('Senior') ? '- Senior' : row.nurse.includes('Junior') ? '- Junior' : ''}</div>
-                      </td>
-                      {row.shifts.map((shift: string, dIndex: number) => {
-
-                        // Specific UI hints for the constraints handling
-                        const isI1 = i === 0 && (dIndex === 1 || dIndex === 2); // RN-A requested OFF
-                        const isI2 = i === 3 && shift !== 'N'; // PN-D requested NO Night
-
+              return (
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="sticky top-0 bg-slate-800/90 backdrop-blur shadow-sm z-10">
+                    {isIT && onCallWeekRanges.length > 0 && (
+                      <tr className="border-b border-slate-700/50">
+                        <th className="px-6 py-2 text-xs text-slate-500"></th>
+                        {[...Array(scheduleDays)].map((_, i) => {
+                          const wIdx = getOnCallWeekIdx(i);
+                          const isFirst = wIdx >= 0 && onCallWeekRanges[wIdx]?.start === i;
+                          const isLast  = wIdx >= 0 && onCallWeekRanges[wIdx]?.end   === i;
+                          const nurseName = wIdx >= 0 && onCallDayNurseMap[i] !== undefined
+                            ? schedule[onCallDayNurseMap[i]]?.nurse?.split('(')[0]?.trim() || ''
+                            : '';
+                          if (wIdx >= 0 && isFirst) {
+                            const span = onCallWeekRanges[wIdx].end - onCallWeekRanges[wIdx].start + 1;
+                            return (
+                              <th key={i} colSpan={span} className="py-1.5 text-center text-[10px] font-bold text-purple-300">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30">
+                                  <span>🔔</span> {nurseName} — On-Call Week {wIdx + 1}
+                                </span>
+                              </th>
+                            );
+                          } else if (wIdx >= 0 && !isFirst) {
+                            return null;
+                          }
+                          return (
+                            <th key={i} className="px-4 py-1.5 text-center">
+                              <span className="text-[10px] text-slate-600">—</span>
+                            </th>
+                          );
+                        })}
+                        <th className="px-6 py-1.5 border-l border-slate-700/50"></th>
+                      </tr>
+                    )}
+                    <tr>
+                      <th className="px-6 py-4 font-semibold text-slate-300">บุคลากร</th>
+                      {[...Array(scheduleDays)].map((_, i) => {
+                        const wIdx = getOnCallWeekIdx(i);
                         return (
-                          <td key={dIndex} className="px-4 py-3 text-center">
-                            <div className={`
-                                                inline-flex items-center justify-center w-12 h-10 rounded-lg text-sm font-bold border transition-all cursor-pointer hover:scale-105 shadow-sm
-                                                ${shift === 'M' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20' : ''}
-                                                ${shift === 'E' ? 'bg-amber-500/20 text-amber-400 border-amber-500/20' : ''}
-                                                ${shift === 'N' ? 'bg-purple-500/20 text-purple-400 border-purple-500/20' : ''}
-                                                ${shift === 'OFF' ? 'bg-slate-800 text-slate-500 border-slate-700' : ''}
-                                                ${isI1 && shift === 'OFF' ? 'ring-2 ring-brand-500/50' : ''}
-                                            `}>
-                              {shift}
-                            </div>
-                          </td>
-                        )
+                          <th key={i} className={`px-2 py-4 font-semibold text-center text-slate-300 ${
+                            isIT && wIdx >= 0 ? 'border-l border-r border-purple-700/20' : ''
+                          }`}>
+                            <div className="text-xs text-slate-500">{i + 1}</div>
+                          </th>
+                        );
                       })}
-                      <td className="px-6 py-4 text-center border-l border-slate-700/50">
-                        <div className="inline-flex items-center justify-center bg-slate-800 rounded-lg px-3 py-1 text-sm font-medium border border-slate-700">
-                          <span className="text-brand-400 font-bold">{workedShifts}</span><span className="text-slate-500 text-xs ml-1">กะ</span>
-                        </div>
-                      </td>
+                      <th className="px-6 py-4 font-semibold text-center text-slate-300 border-l border-slate-700/50">รวมกะ</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {[
+                      ...schedule.filter((r: any) => r.type === 'RN'),
+                      ...(schedule.some((r: any) => r.type === 'RN') && schedule.some((r: any) => r.type !== 'RN') ? [{ isSeparator: true, title: '--- ทีมสนับสนุน / ผู้ช่วย (PN/NA/PL/TN) ---' }] : []),
+                      ...schedule.filter((r: any) => r.type !== 'RN')
+                    ].map((row: any, i: number) => {
+                      if (row.isSeparator) {
+                        return (
+                          <tr key={`sep-${i}`} className="bg-slate-800/80">
+                            <td colSpan={scheduleDays + 2} className="px-6 py-2 text-center text-sm font-bold text-slate-400 border-y border-slate-700 uppercase tracking-widest">
+                              {row.title}
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      const workedShifts  = row.shifts.filter((s: string) => s !== 'OFF').length;
+                      const morningShifts = row.shifts.filter((s: string) => s === 'M').length;
+                      const onCallShifts  = row.shifts.filter((s: string) => s === 'N').length;
+                      const onCallWeeks   = Math.round(onCallShifts / 7);
+
+                      return (
+                        <tr key={i} className="hover:bg-slate-700/20 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-slate-200">{row.nurse.split('(')[0].trim()}</div>
+                            <div className="text-xs text-slate-500">{row.type} {row.nurse.includes('Senior') ? '- Senior' : row.nurse.includes('Junior') ? '- Junior' : ''}</div>
+                            {isIT && (
+                              <div className="flex gap-1 mt-1 flex-wrap">
+                                {morningShifts > 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium">
+                                    ☀️ {morningShifts}M
+                                  </span>
+                                )}
+                                {onCallWeeks > 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20 font-medium">
+                                    🔔 {onCallWeeks}สัปดาห์
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          {row.shifts.map((shift: string, dIndex: number) => {
+                            const onCallWkIdx = isIT ? getOnCallWeekIdx(dIndex) : -1;
+                            const isThisNurseOnCall = isIT && shift === 'N';
+                            const bandClass = (isIT && onCallWkIdx >= 0)
+                              ? weekBandColors[onCallWkIdx % weekBandColors.length]
+                              : '';
+                            const isWeekStart = isIT && onCallWkIdx >= 0 && onCallWeekRanges[onCallWkIdx]?.start === dIndex;
+                            const isWeekEnd   = isIT && onCallWkIdx >= 0 && onCallWeekRanges[onCallWkIdx]?.end   === dIndex;
+
+                            let isWeekend = false;
+                            if (selectedMonth && selectedMonth.includes('-')) {
+                              const [yrStr, moStr] = selectedMonth.split('-');
+                              const dDate = new Date(parseInt(yrStr), parseInt(moStr) - 1, dIndex + 1);
+                              const day = dDate.getDay();
+                              isWeekend = (day === 0 || day === 6);
+                            }
+
+                            return (
+                              <td
+                                key={dIndex}
+                                className={`px-2 py-3 text-center ${
+                                  isIT && onCallWkIdx >= 0
+                                    ? `${bandClass} ${
+                                        isWeekStart ? 'rounded-l-lg border-l-2' :
+                                        isWeekEnd   ? 'rounded-r-lg border-r-2' : 'border-x'
+                                      } border-purple-700/30`
+                                    : 'px-4'
+                                }`}
+                              >
+                                {isThisNurseOnCall ? (
+                                  <div
+                                    title={isWeekend ? "On-Call Standby Only" : "Morning Shift + On-Call Standby"}
+                                    className={`inline-flex flex-col items-center justify-center w-14 h-10 rounded-lg font-bold border transition-all cursor-pointer hover:scale-105 shadow-sm gap-0.5
+                                      ${isWeekend 
+                                        ? 'bg-purple-600/35 text-purple-300 border-purple-500/40 text-[10px]' 
+                                        : 'bg-gradient-to-br from-emerald-500/25 to-purple-500/35 text-slate-200 border-purple-500/40 text-[11px]'
+                                      }
+                                    `}
+                                  >
+                                    {isWeekend ? (
+                                      <>
+                                        <span className="text-xs leading-none">🔔</span>
+                                        <span className="leading-none text-[9px]">On-Call</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="leading-none font-extrabold text-slate-100">M / N</span>
+                                        <span className="text-[8px] leading-none opacity-85 text-emerald-300 font-medium">เช้า + ออนคอล</span>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className={`
+                                    inline-flex items-center justify-center w-12 h-10 rounded-lg text-sm font-bold border transition-all cursor-pointer hover:scale-105 shadow-sm
+                                    ${shift === 'M'   ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20' : ''}
+                                    ${shift === 'E'   ? 'bg-amber-500/20   text-amber-400   border-amber-500/20'   : ''}
+                                    ${shift === 'OFF' ? 'bg-slate-800      text-slate-500   border-slate-700'       : ''}
+                                  `}>
+                                    {shift === 'M' && isIT ? '☀️' : shift === 'OFF' ? '' : shift}
+                                    {shift === 'OFF' ? <span className="text-slate-600 text-xs">—</span> : null}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className="px-6 py-4 text-center border-l border-slate-700/50">
+                            {isIT ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <div className="text-xs text-emerald-400 font-medium">{morningShifts}M</div>
+                                {onCallWeeks > 0 && <div className="text-xs text-purple-400 font-medium">🔔{onCallWeeks}wk</div>}
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center justify-center bg-slate-800 rounded-lg px-3 py-1 text-sm font-medium border border-slate-700">
+                                <span className="text-brand-400 font-bold">{workedShifts}</span><span className="text-slate-500 text-xs ml-1">กะ</span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
         )}
       </div>
